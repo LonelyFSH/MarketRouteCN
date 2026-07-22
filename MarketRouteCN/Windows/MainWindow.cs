@@ -112,9 +112,9 @@ public sealed class MainWindow : Window
     private void DrawShoppingListTab()
     {
         DrawPurchaseScopeControls();
-        ImGui.SeparatorText("添加物品");
+        DrawSectionHeader("添加物品");
         DrawItemSearchEditor();
-        ImGui.SeparatorText($"当前清单 · {shoppingListService.Entries.Count} 种物品");
+        DrawSectionHeader($"当前清单 · {shoppingListService.Entries.Count} 种物品");
         DrawShoppingListTable();
 
         ImGui.Spacing();
@@ -133,7 +133,7 @@ public sealed class MainWindow : Window
 
     private void DrawPurchaseScopeControls()
     {
-        ImGui.SeparatorText("采购范围");
+        DrawSectionHeader("采购范围");
 
         if (ImGui.RadioButton("单个大区内购齐全部商品", configuration.Scope == PurchaseScope.SingleDataCenter))
         {
@@ -153,7 +153,13 @@ public sealed class MainWindow : Window
         if (configuration.Scope == PurchaseScope.SingleDataCenter)
         {
             ImGui.SetNextItemWidth(180);
-            DrawDataCenterCombo("目标大区", ref configuration.SelectedDataCenter, saveOnChange: true);
+            var selectedDataCenter = configuration.SelectedDataCenter;
+            if (DrawDataCenterCombo("目标大区", ref selectedDataCenter))
+            {
+                configuration.SelectedDataCenter = selectedDataCenter;
+                configuration.Save();
+                priceRefreshService.ResetAutomaticRefreshSchedule();
+            }
         }
         else
         {
@@ -415,7 +421,7 @@ public sealed class MainWindow : Window
             stationNumber++;
         }
 
-        ImGui.SeparatorText("缺货或数量不足");
+        DrawSectionHeader("缺货或数量不足");
         var incompleteItems = plan.ItemPlans.Where(static item => !item.IsComplete).ToArray();
         if (incompleteItems.Length == 0)
         {
@@ -478,7 +484,7 @@ public sealed class MainWindow : Window
     // 设置价格刷新
     private void DrawSettingsTab()
     {
-        ImGui.SeparatorText("价格自动刷新");
+        DrawSectionHeader("价格自动刷新");
         var refreshLabel = configuration.AutoRefreshMinutes == 0
             ? "关闭"
             : $"{configuration.AutoRefreshMinutes} 分钟";
@@ -506,7 +512,7 @@ public sealed class MainWindow : Window
 
         ImGui.TextWrapped("自动刷新会重新请求当前模式所需的大区：单大区模式只查询所选大区；四大区对比模式查询四个国服大区。刷新不会保证 Universalis 中的众包市场数据刚刚被玩家上传。");
 
-        ImGui.SeparatorText("数据来源说明");
+        DrawSectionHeader("数据来源说明");
         ImGui.BulletText("物品名称、可交易状态与 HQ 能力来自当前国服客户端的本地游戏数据。");
         ImGui.BulletText("交易板挂单来自 Universalis API。它是玩家上传的众包数据，不是盛趣或 Square Enix 的实时市场接口。");
         ImGui.BulletText("总价按所选完整挂单计算；由于交易板挂单通常需要整组购买，实际购买数量可能高于目标数量。");
@@ -555,10 +561,11 @@ public sealed class MainWindow : Window
         };
     }
 
-    private void DrawDataCenterCombo(string label, ref string selectedDataCenter, bool saveOnChange)
+    private static bool DrawDataCenterCombo(string label, ref string selectedDataCenter)
     {
+        var changed = false;
         if (!ImGui.BeginCombo(label, selectedDataCenter))
-            return;
+            return false;
 
         foreach (var dataCenter in DataCenterCatalog.ChinaDataCenters)
         {
@@ -566,11 +573,7 @@ public sealed class MainWindow : Window
             if (ImGui.Selectable(dataCenter, selected))
             {
                 selectedDataCenter = dataCenter;
-                if (saveOnChange)
-                {
-                    configuration.Save();
-                    priceRefreshService.ResetAutomaticRefreshSchedule();
-                }
+                changed = true;
             }
 
             if (selected)
@@ -578,6 +581,7 @@ public sealed class MainWindow : Window
         }
 
         ImGui.EndCombo();
+        return changed;
     }
 
     private static void DrawAvailablePlanCombo(PriceComparisonSnapshot snapshot, ref string selectedDataCenter)
@@ -621,6 +625,14 @@ public sealed class MainWindow : Window
         ImGui.TextColored(color, FormatAge(age));
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(dataTime.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    private static void DrawSectionHeader(string title)
+    {
+        ImGui.Spacing();
+        ImGui.TextUnformatted(title);
+        ImGui.Separator();
+        ImGui.Spacing();
     }
 
     private static string FormatAge(TimeSpan age)
