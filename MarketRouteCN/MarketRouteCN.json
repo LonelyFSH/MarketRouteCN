@@ -1,18 +1,10 @@
 {
   "Author": "LonelyFSH",
   "Name": "MarketRoute CN",
-  "Punchline": "国服全品类批量比价与跨服采购路线规划。",
-  "Description": "面向 FF14 国服交易板的批量采购规划插件。玩家可以通过自动检索建立自定义待买清单，选择数量与任意/HQ/NQ 品质要求，比较陆行鸟、莫古力、猫小胖、豆豆柴四个大区分别购齐整张清单的预计总价，并查看大区内按服务器分组的采购路线。\n\n价格数据来自 Universalis 众包市场数据，不保证与游戏内当前挂单完全一致。插件显示本次查询时间与市场数据时间。\n\n命令：/marketroute 或 /mrcn",
+  "Punchline": "国服全品类批量比价、路线优化与采购会话。",
+  "Description": "面向 FF14 国服交易板的批量采购规划插件。支持多个自定义清单、HQ/NQ 条件、四大区完整报价比较、完整挂单组合、最低价/平衡/最少服务器三种路线策略、服务器子集优化、报价快照历史、采购会话与中断恢复，并显示查询时间和市场数据时间。\n\n价格数据来自 Universalis 众包市场数据，不保证与游戏内当前挂单完全一致。\n\n命令：/marketroute 或 /mrcn",
   "ApplicableVersion": "any",
   "RepoUrl": "https://github.com/LonelyFSH/MarketRouteCN",
-  "Tags": [
-    "market",
-    "china",
-    "shopping",
-    "price"
-  ],
-  "CategoryTags": [
-    "Utility",
-    "UI"
-  ]
+  "Tags": ["market", "china", "shopping", "price", "route"],
+  "CategoryTags": ["Utility", "UI"]
 }

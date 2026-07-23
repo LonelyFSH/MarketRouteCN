@@ -8,7 +8,6 @@ public sealed class ItemCatalogService
 {
     private readonly ItemSearchResult[] allItems;
 
-    // 读取本地可交易物品
     public ItemCatalogService(IDataManager dataManager, IPluginLog log)
     {
         try
@@ -19,12 +18,14 @@ public sealed class ItemCatalogService
                 .Select(static item => new ItemSearchResult(
                     item.RowId,
                     item.Name.ToString(),
+                    item.Icon,
+                    "可交易物品",
                     item.CanBeHq))
                 .Where(static item => !string.IsNullOrWhiteSpace(item.Name))
                 .OrderBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            log.Information("Loaded {ItemCount} marketable items from the local game data.", allItems.Length);
+            log.Information("Loaded {ItemCount} marketable items.", allItems.Length);
         }
         catch (Exception exception)
         {
@@ -33,7 +34,6 @@ public sealed class ItemCatalogService
         }
     }
 
-    // 按名称筛选物品
     public IReadOnlyList<ItemSearchResult> Search(string query, int maximumResults = 30)
     {
         var normalized = query.Trim();
@@ -53,10 +53,8 @@ public sealed class ItemCatalogService
     {
         if (value.Equals(query, StringComparison.OrdinalIgnoreCase))
             return 0;
-
         if (value.StartsWith(query, StringComparison.OrdinalIgnoreCase))
             return 1;
-
         return 2;
     }
 }

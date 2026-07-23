@@ -53,7 +53,7 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           if ($tag -notmatch '^v(\d+\.\d+\.\d+\.\d+)$') {
-            throw "Release tags must use vMAJOR.MINOR.PATCH.REVISION, for example v0.1.0.0."
+            throw "Release tags must use vMAJOR.MINOR.PATCH.REVISION, for example v0.5.0.0."
           }
 
           $version = $Matches[1]

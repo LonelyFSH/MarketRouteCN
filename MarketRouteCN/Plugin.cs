@@ -16,14 +16,15 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ICommandManager commandManager;
     private readonly UniversalisClient universalisClient;
     private readonly PriceRefreshService priceRefreshService;
+    private readonly PurchaseSessionService purchaseSessionService;
     private readonly MainWindow mainWindow;
 
-    // 初始化插件服务
     public Plugin(
         IDalamudPluginInterface pluginInterface,
         ICommandManager commandManager,
         IFramework framework,
         IDataManager dataManager,
+        IGameInventory gameInventory,
         IPluginLog log)
     {
         this.pluginInterface = pluginInterface;
@@ -34,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var itemCatalogService = new ItemCatalogService(dataManager, log);
         var shoppingListService = new ShoppingListService(Configuration);
+        var quoteHistoryService = new QuoteHistoryService(Configuration);
         universalisClient = new UniversalisClient(log);
         var optimizer = new PurchaseOptimizer();
         priceRefreshService = new PriceRefreshService(
@@ -41,37 +43,33 @@ public sealed class Plugin : IDalamudPlugin
             framework,
             universalisClient,
             optimizer,
+            quoteHistoryService,
             log);
+        purchaseSessionService = new PurchaseSessionService(Configuration, framework, gameInventory, log);
 
         mainWindow = new MainWindow(
             Configuration,
             itemCatalogService,
             shoppingListService,
-            priceRefreshService);
+            quoteHistoryService,
+            priceRefreshService,
+            purchaseSessionService);
 
         WindowSystem.AddWindow(mainWindow);
-
-        commandManager.AddHandler(PrimaryCommand, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "打开 MarketRoute CN。",
-        });
-        commandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "打开 MarketRoute CN。",
-        });
+        commandManager.AddHandler(PrimaryCommand, new CommandInfo(OnCommand) { HelpMessage = "打开 MarketRoute CN。" });
+        commandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand) { HelpMessage = "打开 MarketRoute CN。" });
 
         pluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         pluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
         pluginInterface.UiBuilder.OpenConfigUi += ToggleMainUi;
 
-        log.Information("MarketRoute CN V0.1 initialized.");
+        log.Information("MarketRoute CN V0.5 initialized.");
     }
 
     public Configuration Configuration { get; }
 
     public WindowSystem WindowSystem { get; } = new("MarketRouteCN");
 
-    // 释放事件和资源
     public void Dispose()
     {
         pluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
@@ -82,6 +80,7 @@ public sealed class Plugin : IDalamudPlugin
         commandManager.RemoveHandler(ShortCommand);
 
         WindowSystem.RemoveAllWindows();
+        purchaseSessionService.Dispose();
         priceRefreshService.Dispose();
         universalisClient.Dispose();
     }

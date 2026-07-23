@@ -11,9 +11,74 @@ public sealed class ShoppingListService
         this.configuration = configuration;
     }
 
-    public IReadOnlyList<ShoppingListEntry> Entries => configuration.ShoppingList;
+    public IReadOnlyList<SavedShoppingList> Lists => configuration.ShoppingLists;
 
-    // 添加或合并清单物品
+    public SavedShoppingList ActiveList => configuration.ActiveShoppingList;
+
+    public IReadOnlyList<ShoppingListEntry> Entries => ActiveList.Entries;
+
+    public void SetActive(Guid listId)
+    {
+        if (configuration.ShoppingLists.All(list => list.ListId != listId))
+            return;
+
+        configuration.ActiveShoppingListId = listId;
+        configuration.Save();
+    }
+
+    public SavedShoppingList Create(string name)
+    {
+        var list = new SavedShoppingList
+        {
+            Name = NormalizeName(name, "新采购清单"),
+        };
+        configuration.ShoppingLists.Add(list);
+        configuration.ActiveShoppingListId = list.ListId;
+        configuration.Save();
+        return list;
+    }
+
+    public SavedShoppingList DuplicateActive(string? name = null)
+    {
+        var source = ActiveList;
+        var copy = new SavedShoppingList
+        {
+            Name = NormalizeName(name, source.Name + " 副本"),
+            Entries = source.Entries.Select(static entry =>
+            {
+                var clone = entry.Clone();
+                clone.EntryId = Guid.NewGuid();
+                return clone;
+            }).ToList(),
+        };
+        configuration.ShoppingLists.Add(copy);
+        configuration.ActiveShoppingListId = copy.ListId;
+        configuration.Save();
+        return copy;
+    }
+
+    public void RenameActive(string name)
+    {
+        ActiveList.Name = NormalizeName(name, ActiveList.Name);
+        Touch();
+    }
+
+    public void DeleteActive()
+    {
+        if (configuration.ShoppingLists.Count <= 1)
+        {
+            ActiveList.Entries.Clear();
+            ActiveList.Name = "默认清单";
+            Touch();
+            return;
+        }
+
+        var removedId = ActiveList.ListId;
+        configuration.ShoppingLists.RemoveAll(list => list.ListId == removedId);
+        configuration.ActiveShoppingListId = configuration.ShoppingLists[0].ListId;
+        configuration.Save();
+    }
+
     public void Add(ItemSearchResult item, uint quantity, PurchaseQuality quality)
     {
         if (quantity == 0)
@@ -22,7 +87,7 @@ public sealed class ShoppingListService
         if (!item.SupportsHighQuality)
             quality = PurchaseQuality.Any;
 
-        var existing = configuration.ShoppingList.FirstOrDefault(entry =>
+        var existing = ActiveList.Entries.FirstOrDefault(entry =>
             entry.ItemId == item.ItemId && entry.Quality == quality);
 
         if (existing is not null)
@@ -31,9 +96,8 @@ public sealed class ShoppingListService
         }
         else
         {
-            configuration.ShoppingList.Add(new ShoppingListEntry
+            ActiveList.Entries.Add(new ShoppingListEntry
             {
-                EntryId = Guid.NewGuid(),
                 ItemId = item.ItemId,
                 DisplayName = item.Name,
                 Quantity = quantity,
@@ -42,28 +106,67 @@ public sealed class ShoppingListService
             });
         }
 
-        configuration.Save();
+        Touch();
     }
 
     public void Remove(Guid entryId)
     {
-        configuration.ShoppingList.RemoveAll(entry => entry.EntryId == entryId);
-        configuration.Save();
+        ActiveList.Entries.RemoveAll(entry => entry.EntryId == entryId);
+        Touch();
     }
 
     public void UpdateQuantity(Guid entryId, uint quantity)
     {
-        var entry = configuration.ShoppingList.FirstOrDefault(item => item.EntryId == entryId);
+        var entry = ActiveList.Entries.FirstOrDefault(item => item.EntryId == entryId);
         if (entry is null || quantity == 0)
             return;
 
         entry.Quantity = quantity;
-        configuration.Save();
+        Touch();
+    }
+
+    public void UpdateQuality(Guid entryId, PurchaseQuality quality)
+    {
+        var entry = ActiveList.Entries.FirstOrDefault(item => item.EntryId == entryId);
+        if (entry is null)
+            return;
+
+        entry.Quality = entry.SupportsHighQuality ? quality : PurchaseQuality.Any;
+        Touch();
+    }
+
+    public void Move(Guid entryId, int offset)
+    {
+        var entries = ActiveList.Entries;
+        var current = entries.FindIndex(entry => entry.EntryId == entryId);
+        if (current < 0)
+            return;
+
+        var target = Math.Clamp(current + offset, 0, entries.Count - 1);
+        if (target == current)
+            return;
+
+        var entry = entries[current];
+        entries.RemoveAt(current);
+        entries.Insert(target, entry);
+        Touch();
     }
 
     public void Clear()
     {
-        configuration.ShoppingList.Clear();
+        ActiveList.Entries.Clear();
+        Touch();
+    }
+
+    private void Touch()
+    {
+        ActiveList.UpdatedAt = DateTimeOffset.UtcNow;
         configuration.Save();
+    }
+
+    private static string NormalizeName(string? value, string fallback)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? fallback : trimmed;
     }
 }

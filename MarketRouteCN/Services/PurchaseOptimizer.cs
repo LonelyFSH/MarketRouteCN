@@ -4,20 +4,118 @@ namespace MarketRouteCN.Services;
 
 public sealed class PurchaseOptimizer
 {
-    private const int ExactDpMaximumQuantity = 25_000;
-    private const int ExactDpMaximumListings = 500;
+    private const int ExactDpMaximumQuantity = 5_000;
+    private const int ExactDpMaximumListings = 160;
 
-    // 生成大区采购方案
     public DataCenterPurchasePlan BuildPlan(
         string dataCenter,
         IReadOnlyList<ShoppingListEntry> shoppingList,
         IReadOnlyDictionary<uint, ItemMarketData> marketData,
-        DateTimeOffset queryTime)
+        DateTimeOffset queryTime,
+        PurchaseStrategy strategy,
+        long additionalServerSavingsThreshold,
+        int overbuyPenaltyPerUnit,
+        int staleDataPenaltyPerHour,
+        CancellationToken cancellationToken)
     {
-        var itemPlans = shoppingList
-            .Select(entry => BuildItemPlan(entry, marketData.GetValueOrDefault(entry.ItemId)))
+        var worlds = marketData.Values
+            .SelectMany(static item => item.Listings)
+            .Select(static listing => listing.WorldName)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static world => world, StringComparer.Ordinal)
             .ToArray();
 
+        if (worlds.Length == 0)
+            return BuildEmptyPlan(dataCenter, shoppingList, marketData, queryTime, strategy);
+
+        var worldIndex = worlds.Select((world, index) => (world, index))
+            .ToDictionary(static pair => pair.world, static pair => pair.index, StringComparer.Ordinal);
+
+        var candidates = new List<CandidatePlan>();
+        var maskCount = 1 << worlds.Length;
+        for (var mask = 1; mask < maskCount; mask++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var itemPlans = new ItemPurchasePlan[shoppingList.Count];
+            var complete = true;
+            for (var index = 0; index < shoppingList.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var request = shoppingList[index];
+                var data = marketData.GetValueOrDefault(request.ItemId);
+                itemPlans[index] = BuildItemPlan(request, data, listing =>
+                    worldIndex.TryGetValue(listing.WorldName, out var worldPosition) && (mask & (1 << worldPosition)) != 0);
+                complete &= itemPlans[index].IsComplete;
+            }
+
+            var actualWorlds = itemPlans
+                .SelectMany(static item => item.SelectedListings)
+                .Select(static listing => listing.Listing.WorldName)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(static world => world, StringComparer.Ordinal)
+                .ToArray();
+
+            if (actualWorlds.Length == 0)
+                continue;
+
+            var totalCost = itemPlans.Sum(static item => item.TotalCost);
+            var overbuy = itemPlans.Sum(static item => item.OverbuyQuantity);
+            var stalePenalty = CalculateStalePenalty(itemPlans, staleDataPenaltyPerHour);
+            var score = CalculateScore(strategy, totalCost, actualWorlds.Length, overbuy,
+                additionalServerSavingsThreshold, overbuyPenaltyPerUnit, stalePenalty);
+
+            candidates.Add(new CandidatePlan(itemPlans, actualWorlds, complete, totalCost, overbuy, score));
+        }
+
+        if (candidates.Count == 0)
+            return BuildEmptyPlan(dataCenter, shoppingList, marketData, queryTime, strategy);
+
+        var completeCandidates = candidates.Where(static candidate => candidate.IsComplete).ToArray();
+        var selected = completeCandidates.Length > 0
+            ? completeCandidates.OrderBy(candidate => GetSortKey(candidate, strategy)).First()
+            : candidates
+                .OrderByDescending(static candidate => candidate.ItemPlans.Count(static item => item.IsComplete))
+                .ThenByDescending(static candidate => candidate.ItemPlans.Sum(static item =>
+                    Math.Min(item.PurchasedQuantity, checked((int)item.Request.Quantity))))
+                .ThenBy(candidate => GetSortKey(candidate, strategy))
+                .First();
+        var alternatives = completeCandidates
+            .GroupBy(static candidate => candidate.Worlds.Count)
+            .Select(group => group.OrderBy(static candidate => candidate.TotalCost)
+                .ThenBy(static candidate => candidate.OverbuyQuantity)
+                .First())
+            .OrderBy(static candidate => candidate.Worlds.Count)
+            .Select(static candidate => new RouteAlternative(
+                candidate.Worlds.Count,
+                candidate.TotalCost,
+                candidate.OverbuyQuantity,
+                candidate.Worlds))
+            .ToArray();
+
+        return BuildDataCenterPlan(dataCenter, selected.ItemPlans, alternatives, queryTime, strategy, selected.Score);
+    }
+
+    private static DataCenterPurchasePlan BuildEmptyPlan(
+        string dataCenter,
+        IReadOnlyList<ShoppingListEntry> shoppingList,
+        IReadOnlyDictionary<uint, ItemMarketData> marketData,
+        DateTimeOffset queryTime,
+        PurchaseStrategy strategy)
+    {
+        var itemPlans = shoppingList
+            .Select(entry => BuildItemPlan(entry, marketData.GetValueOrDefault(entry.ItemId), static _ => false))
+            .ToArray();
+        return BuildDataCenterPlan(dataCenter, itemPlans, [], queryTime, strategy, long.MaxValue);
+    }
+
+    private static DataCenterPurchasePlan BuildDataCenterPlan(
+        string dataCenter,
+        IReadOnlyList<ItemPurchasePlan> itemPlans,
+        IReadOnlyList<RouteAlternative> alternatives,
+        DateTimeOffset queryTime,
+        PurchaseStrategy strategy,
+        long score)
+    {
         var serverPlans = itemPlans
             .SelectMany(static item => item.SelectedListings)
             .GroupBy(static listing => listing.Listing.WorldName, StringComparer.Ordinal)
@@ -37,15 +135,22 @@ public sealed class PurchaseOptimizer
         return new DataCenterPurchasePlan
         {
             DataCenterName = dataCenter,
+            Strategy = strategy,
             ItemPlans = itemPlans,
             ServerPlans = serverPlans,
+            Alternatives = alternatives,
             QueryTime = queryTime,
+            OptimizationScore = score,
         };
     }
 
-    private static ItemPurchasePlan BuildItemPlan(ShoppingListEntry request, ItemMarketData? marketData)
+    private static ItemPurchasePlan BuildItemPlan(
+        ShoppingListEntry request,
+        ItemMarketData? marketData,
+        Func<MarketListing, bool> worldFilter)
     {
         var eligibleListings = marketData?.Listings
+            .Where(worldFilter)
             .Where(listing => request.Quality switch
             {
                 PurchaseQuality.HighQuality => listing.IsHighQuality,
@@ -66,13 +171,20 @@ public sealed class PurchaseOptimizer
                 TotalCost = 0,
                 PurchasedQuantity = 0,
                 IsComplete = false,
+                DataStatus = marketData?.Status ?? MarketDataStatus.RequestFailed,
                 MarketDataTime = marketData?.LastUploadTime,
             };
         }
 
         var selection = Solve(eligibleListings, checked((int)request.Quantity));
         var selected = selection.Listings
-            .Select(listing => new SelectedListing(request.ItemId, request.DisplayName, request.Quality, listing))
+            .Select(listing => new SelectedListing(
+                Guid.NewGuid(),
+                request.EntryId,
+                request.ItemId,
+                request.DisplayName,
+                request.Quality,
+                listing))
             .ToArray();
 
         return new ItemPurchasePlan
@@ -82,6 +194,7 @@ public sealed class PurchaseOptimizer
             TotalCost = selection.TotalCost,
             PurchasedQuantity = selection.TotalQuantity,
             IsComplete = selection.TotalQuantity >= request.Quantity,
+            DataStatus = marketData?.Status ?? MarketDataStatus.RequestFailed,
             MarketDataTime = marketData?.LastUploadTime,
         };
     }
@@ -91,27 +204,19 @@ public sealed class PurchaseOptimizer
         var totalAvailable = listings.Sum(static listing => (long)listing.Quantity);
         if (totalAvailable < requiredQuantity)
         {
-            var all = listings.OrderBy(static listing => listing.PricePerUnit).ToArray();
-            return new ListingSelection(
-                all,
-                all.Sum(static listing => listing.TotalPrice),
-                all.Sum(static listing => listing.Quantity));
+            var all = listings.OrderBy(static listing => listing.PricePerUnit).ThenBy(static listing => listing.TotalPrice).ToArray();
+            return new ListingSelection(all, all.Sum(static listing => listing.TotalPrice), all.Sum(static listing => listing.Quantity));
         }
 
         var maximumListingQuantity = listings.Max(static listing => listing.Quantity);
         var quantityCap = checked(requiredQuantity + maximumListingQuantity - 1);
-
         if (quantityCap <= ExactDpMaximumQuantity && listings.Count <= ExactDpMaximumListings)
             return SolveExactly(listings, requiredQuantity, quantityCap);
 
         return SolveGreedy(listings, requiredQuantity);
     }
 
-    // 计算最低成本组合
-    private static ListingSelection SolveExactly(
-        IReadOnlyList<MarketListing> listings,
-        int requiredQuantity,
-        int quantityCap)
+    private static ListingSelection SolveExactly(IReadOnlyList<MarketListing> listings, int requiredQuantity, int quantityCap)
     {
         var states = new PlanNode?[quantityCap + 1];
         states[0] = new PlanNode(0, 0, 0, null, -1);
@@ -119,18 +224,19 @@ public sealed class PurchaseOptimizer
         for (var listingIndex = 0; listingIndex < listings.Count; listingIndex++)
         {
             var listing = listings[listingIndex];
-            var previousStates = (PlanNode?[])states.Clone();
-
-            for (var quantity = 0; quantity < previousStates.Length; quantity++)
+            for (var quantity = quantityCap - 1; quantity >= 0; quantity--)
             {
-                var previous = previousStates[quantity];
+                var previous = states[quantity];
                 if (previous is null)
                     continue;
 
                 var nextQuantity = Math.Min(quantityCap, quantity + listing.Quantity);
-                var nextCost = checked(previous.Cost + listing.TotalPrice);
-                var nextCount = previous.ListingCount + 1;
-                var candidate = new PlanNode(nextCost, nextQuantity, nextCount, previous, listingIndex);
+                var candidate = new PlanNode(
+                    checked(previous.Cost + listing.TotalPrice),
+                    nextQuantity,
+                    previous.ListingCount + 1,
+                    previous,
+                    listingIndex);
 
                 if (IsBetter(candidate, states[nextQuantity]))
                     states[nextQuantity] = candidate;
@@ -148,59 +254,93 @@ public sealed class PurchaseOptimizer
         if (best is null)
             return SolveGreedy(listings, requiredQuantity);
 
-        var selectedListings = new List<MarketListing>();
+        var selected = new List<MarketListing>();
         for (var node = best; node is not null && node.ListingIndex >= 0; node = node.Previous)
-            selectedListings.Add(listings[node.ListingIndex]);
-
-        selectedListings.Reverse();
-        return new ListingSelection(selectedListings, best.Cost, best.Quantity);
+            selected.Add(listings[node.ListingIndex]);
+        selected.Reverse();
+        return new ListingSelection(selected, best.Cost, best.Quantity);
     }
 
-    // 处理较大的挂单集合
     private static ListingSelection SolveGreedy(IReadOnlyList<MarketListing> listings, int requiredQuantity)
     {
         var selected = new List<MarketListing>();
-        var totalQuantity = 0;
-        long totalCost = 0;
-
-        foreach (var listing in listings
-                     .OrderBy(static listing => listing.PricePerUnit)
-                     .ThenBy(static listing => listing.TotalPrice))
+        var quantity = 0;
+        long cost = 0;
+        foreach (var listing in listings.OrderBy(static listing => listing.PricePerUnit).ThenBy(static listing => listing.TotalPrice))
         {
             selected.Add(listing);
-            totalQuantity += listing.Quantity;
-            totalCost += listing.TotalPrice;
-
-            if (totalQuantity >= requiredQuantity)
+            quantity += listing.Quantity;
+            cost += listing.TotalPrice;
+            if (quantity >= requiredQuantity)
                 break;
         }
+        return new ListingSelection(selected, cost, quantity);
+    }
 
-        return new ListingSelection(selected, totalCost, totalQuantity);
+    private static long CalculateScore(
+        PurchaseStrategy strategy,
+        long cost,
+        int serverCount,
+        int overbuy,
+        long serverPenalty,
+        int overbuyPenalty,
+        long stalePenalty)
+    {
+        return strategy switch
+        {
+            PurchaseStrategy.LowestPrice => cost,
+            PurchaseStrategy.FewestServers => checked((long)serverCount * 1_000_000_000_000L + cost),
+            _ => checked(cost + Math.Max(0, serverCount - 1) * serverPenalty + (long)overbuy * overbuyPenalty + stalePenalty),
+        };
+    }
+
+    private static long CalculateStalePenalty(IEnumerable<ItemPurchasePlan> itemPlans, int penaltyPerHour)
+    {
+        if (penaltyPerHour <= 0)
+            return 0;
+
+        var now = DateTimeOffset.UtcNow;
+        long total = 0;
+        foreach (var item in itemPlans)
+        {
+            if (item.MarketDataTime is null)
+                total += penaltyPerHour * 24L;
+            else
+                total += checked((long)Math.Max(0, Math.Floor((now - item.MarketDataTime.Value).TotalHours)) * penaltyPerHour);
+        }
+        return total;
+    }
+
+    private static (long Primary, long Secondary, long Tertiary) GetSortKey(CandidatePlan candidate, PurchaseStrategy strategy)
+    {
+        return strategy switch
+        {
+            PurchaseStrategy.LowestPrice => (candidate.TotalCost, candidate.Worlds.Count, candidate.OverbuyQuantity),
+            PurchaseStrategy.FewestServers => (candidate.Worlds.Count, candidate.TotalCost, candidate.OverbuyQuantity),
+            _ => (candidate.Score, candidate.TotalCost, candidate.Worlds.Count),
+        };
     }
 
     private static bool IsBetter(PlanNode candidate, PlanNode? current)
     {
         if (current is null)
             return true;
-
         if (candidate.Cost != current.Cost)
             return candidate.Cost < current.Cost;
-
         if (candidate.Quantity != current.Quantity)
             return candidate.Quantity < current.Quantity;
-
         return candidate.ListingCount < current.ListingCount;
     }
 
-    private sealed record PlanNode(
-        long Cost,
-        int Quantity,
-        int ListingCount,
-        PlanNode? Previous,
-        int ListingIndex);
-
-    private sealed record ListingSelection(
-        IReadOnlyList<MarketListing> Listings,
+    private sealed record CandidatePlan(
+        IReadOnlyList<ItemPurchasePlan> ItemPlans,
+        IReadOnlyList<string> Worlds,
+        bool IsComplete,
         long TotalCost,
-        int TotalQuantity);
+        int OverbuyQuantity,
+        long Score);
+
+    private sealed record PlanNode(long Cost, int Quantity, int ListingCount, PlanNode? Previous, int ListingIndex);
+
+    private sealed record ListingSelection(IReadOnlyList<MarketListing> Listings, long TotalCost, int TotalQuantity);
 }

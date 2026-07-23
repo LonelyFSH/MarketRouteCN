@@ -1,41 +1,13 @@
 # Architecture
 
-```text
-Local CN game data
-  └─ ItemCatalogService
-       └─ item name search / tradeable filter / HQ capability
+MarketRoute CN V0.5 分为五层。
 
-User shopping list
-  └─ ShoppingListService
-       └─ ItemId + quantity + quality
+ItemCatalogService 负责读取本地可交易物品。
 
-Universalis API
-  └─ UniversalisClient
-       └─ listings grouped by CN data center and world
+UniversalisClient 负责分批请求、缓存、重试和解析市场挂单。
 
-PurchaseOptimizer
-  ├─ full-listing quantity selection
-  ├─ item purchase plan
-  ├─ data-center complete plan
-  └─ server-grouped route
+PurchaseOptimizer 负责完整挂单组合和服务器子集优化。
 
-PriceRefreshService
-  ├─ manual refresh
-  ├─ 5/10/15/30/60-minute schedule
-  ├─ single-DC mode
-  └─ four-DC comparison mode
+PriceRefreshService 负责报价快照、自动刷新和历史保存。
 
-MainWindow
-  ├─ custom list
-  ├─ data-center comparison
-  ├─ purchase route
-  └─ settings/data timestamps
-```
-
-## Design boundaries
-
-- InternalName is permanently `MarketRouteCN`.
-- Market data is read-only.
-- V0.1 does not interact with the market-board UI or purchase items.
-- A shopping entry is stored by ItemId, not by the user's raw search text.
-- Query time and market-data time are separate fields throughout the model.
+PurchaseSessionService 负责采购过程、恢复和背包变化建议。

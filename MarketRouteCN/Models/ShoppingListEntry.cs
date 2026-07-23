@@ -13,4 +13,17 @@ public sealed class ShoppingListEntry
     public PurchaseQuality Quality { get; set; } = PurchaseQuality.Any;
 
     public bool SupportsHighQuality { get; set; }
+
+    public ShoppingListEntry Clone()
+    {
+        return new ShoppingListEntry
+        {
+            EntryId = EntryId,
+            ItemId = ItemId,
+            DisplayName = DisplayName,
+            Quantity = Quantity,
+            Quality = Quality,
+            SupportsHighQuality = SupportsHighQuality,
+        };
+    }
 }

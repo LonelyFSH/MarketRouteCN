@@ -12,5 +12,9 @@ public sealed class ItemPurchasePlan
 
     public required bool IsComplete { get; init; }
 
+    public required MarketDataStatus DataStatus { get; init; }
+
     public DateTimeOffset? MarketDataTime { get; init; }
+
+    public int OverbuyQuantity => Math.Max(0, PurchasedQuantity - checked((int)Request.Quantity));
 }
