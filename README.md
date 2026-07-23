@@ -1,43 +1,216 @@
+<div align="center">
+
 # MarketRoute CN
 
-MarketRoute CN is a Dalamud plugin for planning batch market-board purchases on the Chinese FFXIV service.
+### 让 FF14 国服批量采购更清晰、更省钱、更省时间
 
-## V0.9 highlights
+[![Version](https://img.shields.io/badge/版本-v0.9.0.0-00a8f3?style=for-the-badge)](https://github.com/LonelyFSH/MarketRouteCN/releases/latest)
+[![Dalamud API](https://img.shields.io/badge/Dalamud_API-15-6c63ff?style=for-the-badge)](#运行环境)
+[![.NET](https://img.shields.io/badge/.NET-10-512bd4?style=for-the-badge)](#运行环境)
+[![License](https://img.shields.io/badge/License-MIT-555555?style=for-the-badge)](LICENSE)
 
-- Streamlined workspace without the numbered workflow strip
-- Direct links from quotes to routes and purchase sessions
-- Automatic completion of matching planned listings after a confirmed market-board purchase
-- Automatic synchronization to a planned stop when the character changes world
-- Optional automatic advance after every listing at the current stop is complete
-- Advanced cross-data-center mixed-route analysis
-- Compact quote cards, route summaries and purchase tables
+**国服市场批量比价 · 完整挂单优化 · 跨服采购路线 · 四大区价格分析**
 
-## Main features
+[功能与特性](#功能与特性) · [安装](#安装) · [快速开始](#快速开始) · [高级路线](#高级路线) · [数据说明](#数据说明) · [反馈](#反馈)
 
-- Multiple persistent shopping lists
-- Local marketable-item search using game data
-- Quantity and Any, HQ or NQ requirements
-- Plain text, MakePlace-style, CSV and JSON import and export
-- Single-data-center procurement and four-data-center complete-price comparison
-- Optional cross-data-center mixed procurement analysis
-- Complete-listing bundle optimization
-- Exact server-subset route optimization inside each data center
-- Lowest price, balanced and fewest servers strategies
-- Quote request time and market-data age
-- Persistent purchase sessions and remaining-route refresh
-- Automatic refresh with local request caching
+</div>
 
-## Automatic purchase recording
+---
 
-During an active purchase session, the plugin listens for a confirmed market-board purchase. It marks a planned listing complete only when the item ID, purchased stack quantity and current world match an unfinished route listing. HQ ambiguity is resolved with the subsequent inventory change when necessary. Manual checkboxes remain available as a fallback.
+## 功能与特性
 
-## Cross-data-center analysis
+MarketRoute CN 是一款面向 FF14 国服的 Dalamud 采购规划插件。玩家可以建立购物清单，比较不同大区的完整采购价格，并生成按服务器整理的采购路线。
 
-Enable Advanced options and Cross-data-center mixed route analysis in Settings. Then select Cross-data-center mixed route on the shopping-list page before refreshing prices.
+### 核心功能
 
-The optimizer compares non-empty subsets of the four Chinese data centers. Each requested item is assigned to the lowest-scoring complete plan in one selected data center, and the final score can include additional data-center and server costs.
+- 支持多个购物清单，并自动保存清单内容
+- 使用游戏本地数据搜索可交易物品
+- 支持任意品质、HQ 与 NQ 条件
+- 按交易板完整挂单计算，不使用简单的最低单价乘法
+- 支持单大区完整采购与四大区完整价格对比
+- 提供极致低价、平衡、最少服务器三种路线策略
+- 显示报价请求时间、挂单更新时间和数据新鲜度
+- 启动采购路线后，可根据对应服务器上的实际购买自动完成匹配项目
+- 支持普通文本、MakePlace 风格、CSV 与 JSON 清单导入
+- 支持采购会话保存、中断恢复与剩余物品重新规划
 
-## Commands
+### 简洁工作流
+
+```text
+建立清单
+  ↓
+查询四区报价
+  ↓
+选择采购方案
+  ↓
+查看服务器路线
+  ↓
+开始采购并自动记录进度
+```
+
+插件界面默认使用简洁模式，仅保留当前步骤所需的关键信息。报价、路线和采购页面之间可以直接跳转，无需逐页返回操作。
+
+---
+
+## 安装
+
+在 Dalamud 设置中添加以下第三方仓库地址：
+
+```text
+https://raw.githubusercontent.com/LonelyFSH/MarketRouteCN/main/repo.json
+```
+
+添加完成并保存设置后：
+
+1. 打开 Dalamud 插件安装器
+2. 搜索 `MarketRoute CN`
+3. 点击安装
+4. 在聊天框输入 `/mrcn` 打开插件
+
+### 安装路径
+
+```text
+/xlsettings
+→ Experimental
+→ Custom Plugin Repositories
+→ 添加仓库地址
+```
+
+随后打开：
+
+```text
+/xlplugins
+→ 搜索 MarketRoute CN
+→ Install
+```
+
+---
+
+## 快速开始
+
+### 创建采购清单
+
+在清单页面搜索物品，填写数量并选择品质要求，然后加入当前清单。
+
+```text
+物品名称
+数量
+品质 任意 HQ NQ
+```
+
+相同物品与相同品质要求会自动合并，避免重复记录。
+
+### 查询报价
+
+点击报价后，插件会分别计算国服四个大区完成整张清单所需的预计价格，并显示：
+
+- 是否能够完整购齐
+- 预计总价
+- 需要访问的服务器数量
+- 超额购买数量
+- 市场数据更新时间
+- 数据新鲜度
+
+### 生成路线
+
+选择一个大区方案后，插件会按服务器整理应购买的物品和挂单，并给出不同服务器数量下的价格取舍。
+
+### 开始采购
+
+启动采购会话后，插件会显示当前服务器和待购买内容。玩家在对应服务器购买计划中的物品后，插件会尝试自动匹配并完成该项目。
+
+自动匹配会同时核对：
+
+- 物品 ID
+- 当前服务器
+- 购买数量
+- HQ 或 NQ 条件
+
+无法可靠匹配时仍可手动确认，不会强制修改采购进度。
+
+---
+
+## 高级路线
+
+在设置的高级选项中可以启用跨大区混合路线分析。
+
+该模式允许不同物品分配到不同大区，例如：
+
+```text
+陆行鸟购买物品 A 和 B
+莫古力购买物品 C
+猫小胖购买物品 D 和 E
+```
+
+同一个清单项目不会被拆分到多个大区。路线评分综合考虑：
+
+- 完整挂单总价
+- 新增大区成本
+- 新增服务器成本
+- 超额购买惩罚
+- 市场数据过期风险
+
+玩家可以设置新增大区的等效 Gil 成本。只有跨大区带来的节省足够明显时，插件才会推荐该方案。
+
+---
+
+## 路线算法
+
+插件不是简单选择每件物品的最低单价服务器。
+
+在单个大区内，插件会枚举可用服务器组合，并在每个组合内重新计算整张购物清单。对每件物品，算法按照不可拆分的完整挂单选择最低成本组合。
+
+```text
+服务器组合枚举
++
+完整挂单组合优化
++
+价格与服务器数量联合评分
+```
+
+提供三种策略：
+
+| 策略 | 优先目标 |
+|---|---|
+| 极致低价 | 采购总价最低 |
+| 平衡 | 在价格与服务器数量之间权衡 |
+| 最少服务器 | 优先减少访问服务器数量 |
+
+路线结果仅用于规划，不会自动切换服务器、打开交易板或执行购买。
+
+---
+
+## 数据说明
+
+> 挂单来自 Universalis 众包接口，不是游戏运营方提供的实时市场数据。
+
+插件会分别显示：
+
+- 插件本次请求数据的时间
+- 市场挂单自身的更新时间
+- 当前报价中的最旧数据时间
+
+市场挂单可能已经被其他玩家购买，实际成交价格可能与插件显示结果不同。建议在购买前核对游戏内交易板。
+
+插件按完整挂单计算，因此实际购买数量可能高于清单目标数量。
+
+---
+
+## 隐私与安全
+
+MarketRoute CN 仅执行查询、优化和采购记录，不会：
+
+- 自动购买物品
+- 自动操作交易板
+- 自动跨服或跨大区移动
+- 上传角色名、账号信息或聊天内容
+- 收集登录凭据
+
+外部市场查询只使用物品 ID 与目标大区或服务器信息。
+
+---
+
+## 命令
 
 ```text
 /marketroute
@@ -50,21 +223,58 @@ The optimizer compares non-empty subsets of the four Chinese data centers. Each 
 /mrcn settings
 ```
 
-## Data notice
+---
 
-Market listings are requested from the Universalis community data service and are not real-time market data supplied by the game operator.
+## 运行环境
 
-## Build
+| 项目 | 要求 |
+|---|---|
+| Dalamud API | 15 |
+| .NET | 10 |
+| 平台 | x64 |
+| 游戏区域 | FF14 国服 |
 
-The project targets Dalamud API 15 through `Dalamud.NET.Sdk/15.0.0`, .NET 10 and x64.
+---
+
+## 构建
 
 ```text
 dotnet restore MarketRouteCN.sln
-dotnet build MarketRouteCN.sln -c Release
+dotnet build MarketRouteCN.sln -c Release -p:Platform=x64
 ```
 
-## Custom repository
+---
 
-```text
-https://raw.githubusercontent.com/LonelyFSH/MarketRouteCN/main/repo.json
-```
+## 反馈
+
+发现错误或对路线算法、界面、物品搜索有建议，可以在 GitHub Issues 中提交：
+
+[提交问题或建议](https://github.com/LonelyFSH/MarketRouteCN/issues)
+
+提交问题时建议包含：
+
+- 插件版本
+- 操作步骤
+- 预期结果与实际结果
+- 相关截图或日志
+- 涉及的物品、大区和服务器
+
+---
+
+## 声明
+
+MarketRoute CN 是第三方 Dalamud 插件，与《最终幻想 XIV》运营方及 Universalis 没有隶属或官方合作关系。
+
+市场数据具有时效性，插件提供的是基于当前可用众包数据的采购建议，不保证挂单仍然存在或能够按显示价格成交。
+
+---
+
+## License
+
+本项目使用 [MIT License](LICENSE)。
+
+<div align="center">
+
+**MarketRoute CN · 让批量采购少走一步**
+
+</div>
