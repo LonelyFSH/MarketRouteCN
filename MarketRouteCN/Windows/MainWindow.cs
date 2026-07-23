@@ -69,7 +69,7 @@ public sealed class MainWindow : Window
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = configuration.CompactMode ? new Vector2(840, 570) : new Vector2(980, 650),
+            MinimumSize = configuration.CompactMode ? new Vector2(800, 540) : new Vector2(920, 610),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
 
@@ -77,15 +77,13 @@ public sealed class MainWindow : Window
         DrawTopBar();
         ImGui.Separator();
 
-        var sidebarWidth = configuration.CompactMode ? 150f : 190f;
+        var sidebarWidth = configuration.CompactMode ? 132f : 152f;
         ImGui.BeginChild("##MarketRouteCN.Sidebar", new Vector2(sidebarWidth, 0), true);
         DrawSidebar();
         ImGui.EndChild();
 
         ImGui.SameLine();
         ImGui.BeginChild("##MarketRouteCN.Content", Vector2.Zero, false);
-        DrawWorkflowStrip();
-        ImGui.Separator();
         DrawCurrentPage();
         ImGui.EndChild();
     }
@@ -148,46 +146,38 @@ public sealed class MainWindow : Window
     {
         ImGui.TextUnformatted("MarketRoute CN");
         ImGui.SameLine();
-        ImGui.TextDisabled("V0.8");
+        ImGui.TextDisabled("V0.9");
         ImGui.SameLine();
-        ImGui.TextDisabled($"当前清单 {shoppingListService.ActiveList.Name}");
+        ImGui.TextDisabled(shoppingListService.ActiveList.Name);
 
-        if (purchaseSessionService.Session is { State: PurchaseSessionState.Active or PurchaseSessionState.Paused } session)
+        var session = purchaseSessionService.Session;
+        if (session is { State: PurchaseSessionState.Active or PurchaseSessionState.Paused })
         {
             ImGui.SameLine();
             if (ImGui.SmallButton($"继续采购 {session.PurchasedListings}/{session.TotalListings}"))
                 SetPage(WorkspacePage.Session);
+            ImGui.SameLine();
+            ImGui.TextDisabled(configuration.AutoMarkMarketPurchases ? "自动记录已开启" : "手动记录");
         }
 
         ImGui.SameLine();
         ImGui.BeginDisabled(shoppingListService.Entries.Count == 0 || priceRefreshService.IsRefreshing);
-        if (ImGui.SmallButton("立即刷新并看报价"))
+        if (ImGui.SmallButton("刷新报价"))
             RequestQuoteAndOpen();
         ImGui.EndDisabled();
 
         if (priceRefreshService.IsRefreshing)
         {
             ImGui.SameLine();
-            ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.25f, 1f), "正在查询与优化");
+            ImGui.TextDisabled("正在查询");
             ImGui.SameLine();
             if (ImGui.SmallButton("取消"))
                 priceRefreshService.CancelRefresh();
         }
-
-        var snapshot = priceRefreshService.Snapshot;
-        if (snapshot is not null)
+        else if (priceRefreshService.Snapshot is { } snapshot)
         {
             ImGui.SameLine();
-            ImGui.TextDisabled($"最近查询 {snapshot.CompletedAt.ToLocalTime():HH:mm:ss}");
-        }
-
-        if (priceRefreshService.NextRefreshTime is { } nextRefresh)
-        {
-            var remaining = nextRefresh - DateTimeOffset.UtcNow;
-            if (remaining < TimeSpan.Zero)
-                remaining = TimeSpan.Zero;
-            ImGui.SameLine();
-            ImGui.TextDisabled($"自动刷新 {remaining:mm\\:ss}");
+            ImGui.TextDisabled($"更新于 {snapshot.CompletedAt.ToLocalTime():HH:mm:ss}");
         }
 
         if (!string.IsNullOrWhiteSpace(priceRefreshService.LastError))
@@ -198,79 +188,33 @@ public sealed class MainWindow : Window
 
     private void DrawSidebar()
     {
-        ImGui.TextUnformatted("工作区");
-        ImGui.Spacing();
-        DrawNavigationButton(WorkspacePage.Overview, "概览", "下一步与状态");
-        DrawNavigationButton(WorkspacePage.ShoppingList, "采购清单", $"{shoppingListService.Entries.Count} 种物品");
-        DrawNavigationButton(WorkspacePage.Import, "导入导出", "文本 CSV JSON");
-        DrawNavigationButton(WorkspacePage.Quotes, "四区报价", priceRefreshService.Snapshot is null ? "尚未查询" : "已有结果");
-        DrawNavigationButton(WorkspacePage.Route, "采购路线", routeDataCenter ?? "等待方案");
+        DrawNavigationButton(WorkspacePage.Overview, "概览");
+        DrawNavigationButton(WorkspacePage.ShoppingList, $"清单  {shoppingListService.Entries.Count}");
+        DrawNavigationButton(WorkspacePage.Quotes, "报价");
+        DrawNavigationButton(WorkspacePage.Route, "路线");
 
         var session = purchaseSessionService.Session;
-        var sessionStatus = session is null ? "未开始" : $"{session.PurchasedListings}/{session.TotalListings}";
-        DrawNavigationButton(WorkspacePage.Session, "采购进度", sessionStatus);
-        DrawNavigationButton(WorkspacePage.History, "报价历史", $"{quoteHistoryService.History.Count} 条");
-        DrawNavigationButton(WorkspacePage.Settings, "设置", GetStrategyLabel(configuration.Strategy));
+        var sessionLabel = session is null ? "采购" : $"采购  {session.PurchasedListings}/{session.TotalListings}";
+        DrawNavigationButton(WorkspacePage.Session, sessionLabel);
 
         ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-        ImGui.TextDisabled("快捷命令");
-        ImGui.TextDisabled("/mrcn quote");
-        ImGui.TextDisabled("/mrcn route");
-        ImGui.TextDisabled("/mrcn session");
+        if (ImGui.CollapsingHeader("更多##NavigationMore"))
+        {
+            DrawNavigationButton(WorkspacePage.Import, "导入导出");
+            DrawNavigationButton(WorkspacePage.History, "报价历史");
+            DrawNavigationButton(WorkspacePage.Settings, "设置");
+        }
     }
 
-    private void DrawNavigationButton(WorkspacePage page, string title, string detail)
+    private void DrawNavigationButton(WorkspacePage page, string title)
     {
-        var marker = currentPage == page ? "当前 " : string.Empty;
-        if (ImGui.Button($"{marker}{title}##Nav.{page}", new Vector2(-1, 30)))
+        var label = currentPage == page ? $"{title}  当前" : title;
+        if (ImGui.Button($"{label}##Nav.{page}", new Vector2(-1, 32)))
             SetPage(page);
-        ImGui.TextDisabled(detail);
         ImGui.Spacing();
     }
 
-    private void DrawWorkflowStrip()
-    {
-        if (!ImGui.BeginTable("##WorkflowStrip", 4, ImGuiTableFlags.SizingStretchSame))
-            return;
 
-        ImGui.TableNextColumn();
-        if (ImGui.Button($"1 清单 {shoppingListService.Entries.Count} 项##Flow.List", new Vector2(-1, 34)))
-            SetPage(WorkspacePage.ShoppingList);
-
-        ImGui.TableNextColumn();
-        var quoteReady = SnapshotMatchesActiveList();
-        var quoteLabel = quoteReady ? "2 报价 已完成" : "2 报价 待查询";
-        if (ImGui.Button($"{quoteLabel}##Flow.Quote", new Vector2(-1, 34)))
-        {
-            if (quoteReady)
-                SetPage(WorkspacePage.Quotes);
-            else
-                RequestQuoteAndOpen();
-        }
-
-        ImGui.TableNextColumn();
-        ImGui.BeginDisabled(priceRefreshService.Snapshot is null);
-        if (ImGui.Button("3 路线 直接查看##Flow.Route", new Vector2(-1, 34)))
-            OpenBestRoute();
-        ImGui.EndDisabled();
-
-        ImGui.TableNextColumn();
-        var session = purchaseSessionService.Session;
-        var sessionLabel = session is null ? "4 采购 采用方案" : "4 采购 继续进度";
-        ImGui.BeginDisabled(session is null && priceRefreshService.Snapshot?.CheapestCompletePlan is null);
-        if (ImGui.Button($"{sessionLabel}##Flow.Session", new Vector2(-1, 34)))
-        {
-            if (session is not null)
-                SetPage(WorkspacePage.Session);
-            else
-                StartCheapestPlan();
-        }
-        ImGui.EndDisabled();
-
-        ImGui.EndTable();
-    }
 
     private void DrawCurrentPage()
     {
@@ -305,68 +249,27 @@ public sealed class MainWindow : Window
 
     private void DrawOverviewPage()
     {
-        DrawPageTitle("概览", "在一个页面完成下一步，也可以直接跳到报价、路线或采购进度。 ");
-
-        if (configuration.ShowOnboarding)
-        {
-            ImGui.BeginChild("##Onboarding", new Vector2(0, 118), true);
-            ImGui.TextUnformatted("推荐流程");
-            ImGui.TextWrapped("建立或导入清单后，点击查询并打开报价。选择任意大区即可直接跳到路线，也可以从报价卡片直接开始采购。自动刷新只更新报价，不会静默替换正在执行的采购会话。 ");
-            if (ImGui.SmallButton("已了解并隐藏说明"))
-            {
-                configuration.ShowOnboarding = false;
-                configuration.Save();
-            }
-            ImGui.EndChild();
-            ImGui.Spacing();
-        }
-
+        DrawPageTitle("概览", "查看当前状态并直接进入下一步。 ");
         DrawOverviewMetrics();
         ImGui.Spacing();
 
         var nextAction = GetNextAction();
-        ImGui.BeginChild("##NextAction", new Vector2(0, 110), true);
-        ImGui.TextUnformatted("建议的下一步");
-        ImGui.TextWrapped(nextAction.Description);
+        ImGui.BeginChild("##NextAction", new Vector2(0, 84), true);
+        ImGui.TextUnformatted(nextAction.Description);
         ImGui.BeginDisabled(nextAction.Disabled);
-        if (ImGui.Button(nextAction.Label, new Vector2(260, 38)))
+        if (ImGui.Button(nextAction.Label, new Vector2(230, 34)))
             nextAction.Action();
         ImGui.EndDisabled();
         ImGui.SameLine();
-        if (ImGui.Button("导入现有清单", new Vector2(170, 38)))
+        if (ImGui.Button("导入清单", new Vector2(120, 34)))
             SetPage(WorkspacePage.Import);
         ImGui.EndChild();
 
-        DrawSectionHeader("快捷入口");
-        if (ImGui.BeginTable("##OverviewActions", 3, ImGuiTableFlags.SizingStretchSame))
-        {
-            ImGui.TableNextColumn();
-            if (ImGui.Button("添加物品", new Vector2(-1, 42)))
-                SetPage(WorkspacePage.ShoppingList);
-            ImGui.TableNextColumn();
-            ImGui.BeginDisabled(shoppingListService.Entries.Count == 0 || priceRefreshService.IsRefreshing);
-            if (ImGui.Button("查询并打开四区报价", new Vector2(-1, 42)))
-                RequestQuoteAndOpen();
-            ImGui.EndDisabled();
-            ImGui.TableNextColumn();
-            ImGui.BeginDisabled(priceRefreshService.Snapshot?.CheapestCompletePlan is null);
-            if (ImGui.Button("采用最低完整方案并开始", new Vector2(-1, 42)))
-                StartCheapestPlan();
-            ImGui.EndDisabled();
-            ImGui.EndTable();
-        }
-
-        DrawSectionHeader("最近报价");
         var snapshot = priceRefreshService.Snapshot;
         if (snapshot is null)
-        {
-            ImGui.TextDisabled("尚未生成报价。 ");
             return;
-        }
 
-        ImGui.TextUnformatted($"请求时间 {snapshot.RequestedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
-        ImGui.SameLine();
-        ImGui.TextDisabled($"完成时间 {snapshot.CompletedAt.ToLocalTime():HH:mm:ss}");
+        DrawSectionHeader("最新报价");
         DrawCompactQuoteTable(snapshot);
     }
 
@@ -376,21 +279,19 @@ public sealed class MainWindow : Window
         var cheapest = snapshot?.CheapestCompletePlan;
         var session = purchaseSessionService.Session;
 
-        if (!ImGui.BeginTable("##OverviewMetrics", 4, ImGuiTableFlags.SizingStretchSame))
+        if (!ImGui.BeginTable("##OverviewMetrics", 3, ImGuiTableFlags.SizingStretchSame))
             return;
 
         DrawMetricCell("当前清单", $"{shoppingListService.Entries.Count} 种", shoppingListService.ActiveList.Name);
         DrawMetricCell("最低完整报价", cheapest is null ? "暂无" : $"{FormatGil(cheapest.TotalCost)} Gil", cheapest?.DataCenterName ?? "等待查询");
-        DrawMetricCell("报价数据", snapshot is null ? "暂无" : GetFreshnessLabel(cheapest), snapshot is null ? "等待查询" : snapshot.CompletedAt.ToLocalTime().ToString("HH:mm:ss"));
         DrawMetricCell("采购进度", session is null ? "未开始" : $"{session.PurchasedListings}/{session.TotalListings}", session?.DataCenterName ?? "采用路线后开始");
-
         ImGui.EndTable();
     }
 
     private static void DrawMetricCell(string title, string value, string detail)
     {
         ImGui.TableNextColumn();
-        ImGui.BeginChild($"##Metric.{title}", new Vector2(0, 92), true);
+        ImGui.BeginChild($"##Metric.{title}", new Vector2(0, 72), true);
         ImGui.TextDisabled(title);
         ImGui.TextUnformatted(value);
         ImGui.TextDisabled(detail);
@@ -498,17 +399,27 @@ public sealed class MainWindow : Window
 
     private void DrawPurchaseScopeControls()
     {
-        DrawSectionHeader("报价与路线设置");
-        if (ImGui.RadioButton("一个大区内购齐", configuration.Scope == PurchaseScope.SingleDataCenter))
+        DrawSectionHeader("采购范围");
+        if (ImGui.RadioButton("单大区购齐", configuration.Scope == PurchaseScope.SingleDataCenter))
         {
             configuration.Scope = PurchaseScope.SingleDataCenter;
             configuration.Save();
         }
         ImGui.SameLine();
-        if (ImGui.RadioButton("比较四个大区分别购齐", configuration.Scope == PurchaseScope.CompareAllDataCenters))
+        if (ImGui.RadioButton("四大区分别比较", configuration.Scope == PurchaseScope.CompareAllDataCenters))
         {
             configuration.Scope = PurchaseScope.CompareAllDataCenters;
             configuration.Save();
+        }
+
+        if (configuration.EnableAdvancedOptions && configuration.EnableCrossDataCenterAnalysis)
+        {
+            ImGui.SameLine();
+            if (ImGui.RadioButton("跨大区混合路线", configuration.Scope == PurchaseScope.CrossDataCenterMixed))
+            {
+                configuration.Scope = PurchaseScope.CrossDataCenterMixed;
+                configuration.Save();
+            }
         }
 
         if (configuration.Scope == PurchaseScope.SingleDataCenter)
@@ -538,8 +449,12 @@ public sealed class MainWindow : Window
             }
             ImGui.EndCombo();
         }
-        ImGui.SameLine();
-        ImGui.TextDisabled(GetStrategyDescription(configuration.Strategy));
+
+        if (!configuration.SimpleInterface)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(GetStrategyDescription(configuration.Strategy));
+        }
     }
 
     private void DrawItemSearchEditor()
@@ -865,7 +780,11 @@ public sealed class MainWindow : Window
 
     private void DrawQuotesPage()
     {
-        DrawPageTitle("四区报价", "同一张完整清单分别在四个大区计算。点击卡片即可直接打开路线或开始采购。 ");
+        var pageDescription = configuration.Scope == PurchaseScope.CrossDataCenterMixed
+            ? "比较四个大区，并额外生成跨大区混合方案。"
+            : "比较完整清单在各大区的总价。";
+        DrawPageTitle("报价", pageDescription);
+
         var snapshot = priceRefreshService.Snapshot;
         if (snapshot is null)
         {
@@ -873,93 +792,77 @@ public sealed class MainWindow : Window
             return;
         }
 
-        if (snapshot.ShoppingListId != shoppingListService.ActiveList.ListId)
-            ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.25f, 1f), "当前显示的是其他清单的报价。重新查询可切换到当前清单。 ");
-        else if (snapshot.CompletedAt < shoppingListService.ActiveList.UpdatedAt)
-            ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.25f, 1f), "当前清单在报价后已修改，价格结果可能不再对应最新数量。 ");
+        if (snapshot.ShoppingListId != shoppingListService.ActiveList.ListId || snapshot.CompletedAt < shoppingListService.ActiveList.UpdatedAt)
+            ImGui.TextColored(new Vector4(0.95f, 0.75f, 0.25f, 1f), "当前结果不是最新清单报价。 ");
 
-        ImGui.TextUnformatted($"{snapshot.ShoppingListName}  请求 {snapshot.RequestedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+        ImGui.TextDisabled($"查询时间 {snapshot.CompletedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
         ImGui.SameLine();
         ImGui.BeginDisabled(priceRefreshService.IsRefreshing);
-        if (ImGui.SmallButton("重新查询当前清单"))
+        if (ImGui.SmallButton("重新查询"))
             RequestQuoteAndOpen();
         ImGui.EndDisabled();
 
         var cheapest = snapshot.CheapestCompletePlan;
         if (cheapest is not null)
         {
-            ImGui.TextColored(new Vector4(0.35f, 0.85f, 0.45f, 1f), $"最低完整方案 {cheapest.DataCenterName}  {FormatGil(cheapest.TotalCost)} Gil  {cheapest.ServerCount} 个服务器");
-            if (configuration.EnableTargetTotalPrice)
-            {
-                var reached = cheapest.TotalCost <= configuration.TargetTotalPriceGil;
-                var color = reached ? new Vector4(0.35f, 0.85f, 0.45f, 1f) : new Vector4(0.95f, 0.75f, 0.25f, 1f);
-                var difference = Math.Abs(cheapest.TotalCost - configuration.TargetTotalPriceGil);
-                ImGui.TextColored(color, reached
-                    ? $"已达到目标总价  低于目标 {FormatGil(difference)} Gil"
-                    : $"尚未达到目标总价  高于目标 {FormatGil(difference)} Gil");
-            }
+            var scope = cheapest.IsCrossDataCenter
+                ? $"{cheapest.DataCenterCount} 个大区  {cheapest.ServerCount} 个服务器"
+                : $"{cheapest.ServerCount} 个服务器";
+            ImGui.TextColored(new Vector4(0.35f, 0.85f, 0.45f, 1f),
+                $"最低完整方案  {cheapest.DataCenterName}  {FormatGil(cheapest.TotalCost)} Gil  {scope}");
         }
         else
         {
-            ImGui.TextColored(new Vector4(0.95f, 0.45f, 0.3f, 1f), "当前没有能够购齐全部商品的大区方案。 ");
+            ImGui.TextColored(new Vector4(0.95f, 0.45f, 0.3f, 1f), "当前没有完整购齐方案。 ");
         }
 
         if (ImGui.BeginTable("##QuoteCards", 2, ImGuiTableFlags.SizingStretchSame))
         {
-            foreach (var dataCenter in DataCenterCatalog.ChinaDataCenters)
+            foreach (var plan in GetOrderedPlans(snapshot))
             {
-                if (!snapshot.Plans.TryGetValue(dataCenter, out var plan))
-                    continue;
                 ImGui.TableNextColumn();
                 DrawQuoteCard(snapshot, plan, ReferenceEquals(plan, cheapest));
             }
             ImGui.EndTable();
         }
-
-        ImGui.TextDisabled("当前价按完整挂单计算。风险价表示最脆弱的已选挂单失效后，能够重新购齐时的估算成本。 ");
     }
 
     private void DrawQuoteCard(PriceComparisonSnapshot snapshot, DataCenterPurchasePlan plan, bool cheapest)
     {
-        var height = configuration.CompactMode ? 235f : 265f;
+        var height = configuration.SimpleInterface ? 178f : 228f;
         ImGui.BeginChild($"##QuoteCard.{plan.DataCenterName}", new Vector2(0, height), true);
-        ImGui.TextUnformatted(cheapest ? $"{plan.DataCenterName}  最低完整方案" : plan.DataCenterName);
+        ImGui.TextUnformatted(cheapest ? $"{plan.DataCenterName}  推荐" : plan.DataCenterName);
         ImGui.Separator();
 
-        ImGui.TextUnformatted(plan.IsComplete ? $"{FormatGil(plan.TotalCost)} Gil" : $"已知价格 {FormatGil(plan.TotalCost)} Gil");
-        ImGui.TextDisabled(plan.IsComplete ? "完整度 100%" : $"完整度 {plan.CompletedItems}/{plan.TotalItems}");
-        ImGui.TextUnformatted($"服务器 {plan.ServerCount}  超额 {plan.OverbuyUnits}");
-
-        var previous = quoteHistoryService.FindPreviousQuote(snapshot.ShoppingListId, snapshot.SnapshotId, plan.DataCenterName);
-        if (previous is not null && previous.TotalCost > 0 && plan.TotalCost > 0)
-        {
-            var delta = plan.TotalCost - previous.TotalCost;
-            var trend = delta == 0 ? "与上次相同" : delta < 0 ? $"比上次低 {FormatGil(-delta)}" : $"比上次高 {FormatGil(delta)}";
-            ImGui.TextDisabled(trend);
-        }
-        else
-        {
-            ImGui.TextDisabled("暂无同清单历史对比");
-        }
-
-        if (plan.RiskCostIncrease > 0)
-            ImGui.TextUnformatted($"风险价 {FormatGil(plan.RiskAdjustedCost)}  波动 {FormatGil(plan.RiskCostIncrease)}");
-        else
-            ImGui.TextDisabled("当前未计算出额外价格风险");
-
-        ImGui.TextUnformatted($"数据可信度 {GetConfidenceLabel(plan)}");
-        ImGui.TextDisabled($"旧数据 {plan.StaleItemCount(TimeSpan.FromHours(Math.Max(1, configuration.StaleDataWarningHours)))}/{plan.TotalItems}  低流动 {plan.LowLiquidityItems}");
-        ImGui.TextUnformatted("最旧市场数据");
+        ImGui.TextUnformatted(plan.IsComplete
+            ? $"{FormatGil(plan.TotalCost)} Gil"
+            : $"已知价格 {FormatGil(plan.TotalCost)} Gil");
+        var routeSize = plan.IsCrossDataCenter
+            ? $"{plan.DataCenterCount} 个大区  {plan.ServerCount} 个服务器"
+            : $"{plan.ServerCount} 个服务器";
+        ImGui.TextDisabled(plan.IsComplete ? routeSize : $"完成 {plan.CompletedItems}/{plan.TotalItems}  {routeSize}");
+        ImGui.TextUnformatted("最旧数据");
         ImGui.SameLine();
         DrawDataAge(plan.OldestMarketDataTime);
 
-        if (ImGui.Button($"查看 {plan.DataCenterName} 路线##OpenRoute.{plan.DataCenterName}", new Vector2(-1, 30)))
+        if (!configuration.SimpleInterface && ImGui.CollapsingHeader($"详细信息##QuoteDetails.{plan.DataCenterName}"))
+        {
+            var previous = quoteHistoryService.FindPreviousQuote(snapshot.ShoppingListId, snapshot.SnapshotId, plan.DataCenterName);
+            if (previous is not null && previous.TotalCost > 0 && plan.TotalCost > 0)
+            {
+                var delta = plan.TotalCost - previous.TotalCost;
+                ImGui.TextDisabled(delta == 0 ? "与上次相同" : delta < 0 ? $"比上次低 {FormatGil(-delta)}" : $"比上次高 {FormatGil(delta)}");
+            }
+            ImGui.TextDisabled($"超额 {plan.OverbuyUnits}  风险价 {FormatGil(plan.RiskAdjustedCost)}  可信度 {GetConfidenceLabel(plan)}");
+        }
+
+        if (ImGui.Button($"查看路线##OpenRoute.{plan.DataCenterName}", new Vector2(-1, 28)))
         {
             routeDataCenter = plan.DataCenterName;
             SetPage(WorkspacePage.Route);
         }
         ImGui.BeginDisabled(!plan.IsComplete || plan.ServerCount == 0);
-        if (ImGui.Button($"采用并立即开始采购##Start.{plan.DataCenterName}", new Vector2(-1, 30)))
+        if (ImGui.Button($"直接开始采购##Start.{plan.DataCenterName}", new Vector2(-1, 28)))
         {
             routeDataCenter = plan.DataCenterName;
             purchaseSessionService.Start(snapshot, plan);
@@ -971,12 +874,12 @@ public sealed class MainWindow : Window
 
     private void DrawRoutePage()
     {
-        DrawPageTitle("采购路线", "先选择服务器组合，再按站查看完整挂单。可以从这里一步进入采购进度。 ");
+        DrawPageTitle("采购路线", "选择方案后可直接开始采购。 ");
         var snapshot = priceRefreshService.Snapshot;
         if (snapshot is null || snapshot.Plans.Count == 0)
         {
-            ImGui.TextDisabled("尚无可显示路线。 ");
-            if (ImGui.Button("查询并打开报价"))
+            ImGui.TextDisabled("尚无路线。 ");
+            if (ImGui.Button("查询报价"))
                 RequestQuoteAndOpen();
             return;
         }
@@ -985,74 +888,78 @@ public sealed class MainWindow : Window
         if (routeDataCenter is null)
             return;
 
-        ImGui.SetNextItemWidth(180);
+        ImGui.SetNextItemWidth(190);
         DrawAvailablePlanCombo(snapshot, ref routeDataCenter);
         if (!snapshot.Plans.TryGetValue(routeDataCenter, out var plan))
             return;
 
-        ImGui.TextUnformatted($"{plan.DataCenterName}  {GetStrategyLabel(plan.Strategy)}  {FormatGil(plan.TotalCost)} Gil  {plan.ServerCount} 个服务器");
+        var routeSize = plan.IsCrossDataCenter
+            ? $"{plan.DataCenterCount} 个大区  {plan.ServerCount} 个服务器"
+            : $"{plan.ServerCount} 个服务器";
+        ImGui.TextUnformatted($"{FormatGil(plan.TotalCost)} Gil  {routeSize}  {GetStrategyLabel(plan.Strategy)}");
         ImGui.SameLine();
-        if (ImGui.SmallButton("返回四区报价"))
-            SetPage(WorkspacePage.Quotes);
-
         ImGui.BeginDisabled(!plan.IsComplete || plan.ServerCount == 0);
-        if (ImGui.Button("采用路线并直接进入采购进度", new Vector2(280, 38)))
+        if (ImGui.SmallButton("采用并开始"))
         {
             purchaseSessionService.Start(snapshot, plan);
             SetPage(WorkspacePage.Session);
         }
         ImGui.EndDisabled();
 
-        DrawRouteAlternatives(plan);
-        DrawSectionHeader("服务器采购顺序");
+        if (plan.Alternatives.Count > 1 && ImGui.CollapsingHeader("路线取舍##RouteAlternatives"))
+            DrawRouteAlternatives(plan);
+
+        DrawSectionHeader("采购站");
         var station = 1;
         foreach (var server in plan.ServerPlans)
         {
-            var label = $"第 {station} 站  {server.WorldName}  {server.Listings.Count} 个挂单  {FormatGil(server.TotalCost)} Gil##Route.{server.WorldName}";
-            if (ImGui.CollapsingHeader(label, ImGuiTreeNodeFlags.DefaultOpen))
+            var flags = station == 1 ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+            var label = $"{station}  {server.StopLabel}  {server.Listings.Count} 个挂单  {FormatGil(server.TotalCost)} Gil##Route.{server.DataCenterName}.{server.WorldName}";
+            if (ImGui.CollapsingHeader(label, flags))
                 DrawServerPlan(server);
             station++;
         }
 
         var incomplete = plan.ItemPlans.Where(static item => !item.IsComplete).ToArray();
-        if (incomplete.Length > 0)
+        if (incomplete.Length > 0 && ImGui.CollapsingHeader("未完成项目##IncompleteRoute"))
         {
-            DrawSectionHeader("未完成项目");
             foreach (var item in incomplete)
-                ImGui.TextColored(new Vector4(0.95f, 0.45f, 0.3f, 1f), $"{item.Request.DisplayName} 需要 {item.Request.Quantity}  当前规划 {item.PurchasedQuantity}  {GetMarketStatusLabel(item.DataStatus)}");
+                ImGui.TextColored(new Vector4(0.95f, 0.45f, 0.3f, 1f),
+                    $"{item.Request.DisplayName}  {item.PurchasedQuantity}/{item.Request.Quantity}  {GetMarketStatusLabel(item.DataStatus)}");
         }
     }
 
     private static void DrawRouteAlternatives(DataCenterPurchasePlan plan)
     {
-        DrawSectionHeader("服务器数量与价格取舍");
         if (plan.Alternatives.Count == 0)
-        {
-            ImGui.TextDisabled("没有完整的备选路线。 ");
             return;
-        }
 
-        if (!ImGui.BeginTable("##Alternatives", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
+        var columns = plan.IsCrossDataCenter ? 5 : 4;
+        if (!ImGui.BeginTable("##Alternatives", columns, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
             return;
-        ImGui.TableSetupColumn("服务器数", ImGuiTableColumnFlags.WidthFixed, 80);
-        ImGui.TableSetupColumn("最低总价", ImGuiTableColumnFlags.WidthFixed, 125);
-        ImGui.TableSetupColumn("增加服务器后的节省", ImGuiTableColumnFlags.WidthFixed, 145);
-        ImGui.TableSetupColumn("超额", ImGuiTableColumnFlags.WidthFixed, 70);
-        ImGui.TableSetupColumn("服务器");
+        if (plan.IsCrossDataCenter)
+            ImGui.TableSetupColumn("大区", ImGuiTableColumnFlags.WidthFixed, 60);
+        ImGui.TableSetupColumn("服务器", ImGuiTableColumnFlags.WidthFixed, 70);
+        ImGui.TableSetupColumn("总价", ImGuiTableColumnFlags.WidthFixed, 120);
+        ImGui.TableSetupColumn("多一站节省", ImGuiTableColumnFlags.WidthFixed, 120);
+        ImGui.TableSetupColumn("路线");
         ImGui.TableHeadersRow();
 
         long? previousCost = null;
         foreach (var alternative in plan.Alternatives)
         {
             ImGui.TableNextRow();
+            if (plan.IsCrossDataCenter)
+            {
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(alternative.DataCenterCount.ToString(CultureInfo.InvariantCulture));
+            }
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(alternative.ServerCount.ToString(CultureInfo.InvariantCulture));
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(FormatGil(alternative.TotalCost));
             ImGui.TableNextColumn();
-            ImGui.TextUnformatted(previousCost is null ? "起始方案" : FormatGil(Math.Max(0, previousCost.Value - alternative.TotalCost)));
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(alternative.OverbuyQuantity.ToString(CultureInfo.InvariantCulture));
+            ImGui.TextUnformatted(previousCost is null ? "起始" : FormatGil(Math.Max(0, previousCost.Value - alternative.TotalCost)));
             ImGui.TableNextColumn();
             ImGui.TextWrapped(string.Join("、", alternative.Worlds));
             previousCost = alternative.TotalCost;
@@ -1062,51 +969,54 @@ public sealed class MainWindow : Window
 
     private void DrawSessionPage()
     {
-        DrawPageTitle("采购进度", "完成当前站后可直接进入下一站。刷新剩余项目不会自动覆盖正在执行的路线。 ");
+        DrawPageTitle("采购进度", "交易板购买成功后会自动完成对应挂单。 ");
         var session = purchaseSessionService.Session;
         if (session is null)
         {
-            ImGui.TextDisabled("尚未开始采购会话。 ");
+            ImGui.TextDisabled("尚未开始采购。 ");
             ImGui.BeginDisabled(priceRefreshService.Snapshot?.CheapestCompletePlan is null);
-            if (ImGui.Button("采用最低完整方案并开始采购", new Vector2(280, 38)))
+            if (ImGui.Button("采用最低完整方案并开始", new Vector2(250, 36)))
                 StartCheapestPlan();
             ImGui.EndDisabled();
             ImGui.SameLine();
-            if (ImGui.Button("打开报价选择其他大区", new Vector2(210, 38)))
+            if (ImGui.Button("查看报价", new Vector2(120, 36)))
                 SetPage(WorkspacePage.Quotes);
             return;
         }
 
         ImGui.TextUnformatted($"{session.ShoppingListName}  {session.DataCenterName}  {GetSessionStateLabel(session.State)}");
-        ImGui.TextUnformatted($"计划 {FormatGil(session.PlannedCost)} Gil  已确认 {FormatGil(session.ConfirmedCost)} Gil");
         var progress = session.TotalListings == 0 ? 0f : (float)session.PurchasedListings / session.TotalListings;
         ImGui.ProgressBar(progress, new Vector2(-1, 0), $"{session.PurchasedListings}/{session.TotalListings}  {progress:P0}");
 
-        var currentWorld = purchaseSessionService.CurrentWorld;
-        if (currentWorld is not null)
+        ImGui.TextDisabled(configuration.AutoMarkMarketPurchases
+            ? "自动记录已开启  仅匹配当前服务器、物品和整组数量"
+            : "自动记录已关闭  可使用下方复选框手动完成");
+        if (!string.IsNullOrWhiteSpace(purchaseSessionService.LastAutomaticMessage))
+            ImGui.TextColored(new Vector4(0.35f, 0.85f, 0.45f, 1f), purchaseSessionService.LastAutomaticMessage);
+
+        var currentStop = purchaseSessionService.CurrentStop;
+        if (currentStop is not null)
         {
-            ImGui.BeginChild("##CurrentStation", new Vector2(0, 92), true);
-            ImGui.TextUnformatted($"当前站  {currentWorld}");
-            var currentListings = session.Listings.Where(item => string.Equals(item.WorldName, currentWorld, StringComparison.Ordinal)).ToArray();
+            var currentListings = session.Listings.Where(item =>
+                string.Equals(item.DataCenterName, currentStop.DataCenterName, StringComparison.Ordinal) &&
+                string.Equals(item.WorldName, currentStop.WorldName, StringComparison.Ordinal)).ToArray();
+            ImGui.BeginChild("##CurrentStation", new Vector2(0, 82), true);
+            ImGui.TextUnformatted($"当前计划  {currentStop.Label}");
+            var actualWorld = purchaseSessionService.ActualWorldName;
+            if (!string.IsNullOrWhiteSpace(actualWorld))
+                ImGui.TextDisabled($"角色所在服务器  {actualWorld}");
             ImGui.TextDisabled($"剩余 {currentListings.Count(static item => !item.IsPurchased)} 个挂单  本站 {FormatGil(currentListings.Sum(static item => item.TotalPrice))} Gil");
-            ImGui.BeginDisabled(currentListings.All(static item => item.IsPurchased));
-            if (ImGui.Button("完成当前站并进入下一站", new Vector2(230, 32)))
-                purchaseSessionService.CompleteCurrentWorldAndAdvance();
-            ImGui.EndDisabled();
-            ImGui.SameLine();
-            if (ImGui.Button("只进入下一站", new Vector2(150, 32)))
-                purchaseSessionService.AdvanceToNextWorld();
             ImGui.EndChild();
         }
 
         if (session.State == PurchaseSessionState.Active)
         {
-            if (ImGui.SmallButton("暂停会话"))
+            if (ImGui.SmallButton("暂停"))
                 purchaseSessionService.Pause();
         }
         else if (session.State == PurchaseSessionState.Paused)
         {
-            if (ImGui.SmallButton("继续会话"))
+            if (ImGui.SmallButton("继续"))
                 purchaseSessionService.Resume();
         }
         ImGui.SameLine();
@@ -1118,45 +1028,49 @@ public sealed class MainWindow : Window
         }
         ImGui.EndDisabled();
         ImGui.SameLine();
-        if (ImGui.SmallButton("标记全部完成"))
-            purchaseSessionService.Finish();
+        if (ImGui.SmallButton("手动完成本站并下一站"))
+            purchaseSessionService.CompleteCurrentWorldAndAdvance();
         ImGui.SameLine();
-        if (ImGui.SmallButton("取消会话"))
+        if (ImGui.SmallButton("结束会话"))
             purchaseSessionService.Cancel();
-        ImGui.SameLine();
-        if (ImGui.SmallButton("删除会话记录"))
-            purchaseSessionService.RemoveSession();
 
         var refreshed = priceRefreshService.Snapshot;
-        if (refreshed?.SourceSessionId == session.SessionId && refreshed.Plans.TryGetValue(session.DataCenterName, out var refreshedPlan))
+        if (refreshed?.SourceSessionId == session.SessionId)
         {
-            DrawSectionHeader("剩余项目新方案");
-            ImGui.TextUnformatted($"新路线 {FormatGil(refreshedPlan.TotalCost)} Gil  {refreshedPlan.ServerCount} 个服务器");
-            ImGui.BeginDisabled(!refreshedPlan.IsComplete);
-            if (ImGui.Button("应用新路线并继续采购"))
-                purchaseSessionService.ReplaceRemainingPlan(refreshed, refreshedPlan);
-            ImGui.EndDisabled();
+            var refreshedPlan = refreshed.Plans.GetValueOrDefault(session.DataCenterName) ?? refreshed.CheapestCompletePlan;
+            if (refreshedPlan is not null)
+            {
+                DrawSectionHeader("剩余项目新方案");
+                ImGui.TextUnformatted($"{refreshedPlan.DataCenterName}  {FormatGil(refreshedPlan.TotalCost)} Gil  {refreshedPlan.ServerCount} 个服务器");
+                ImGui.BeginDisabled(!refreshedPlan.IsComplete);
+                if (ImGui.SmallButton("应用新路线"))
+                    purchaseSessionService.ReplaceRemainingPlan(refreshed, refreshedPlan);
+                ImGui.EndDisabled();
+            }
         }
 
         DrawInventorySuggestions();
-        DrawSectionHeader("所有采购站");
-        var worlds = session.Worlds;
-        for (var index = 0; index < worlds.Count; index++)
+        DrawSectionHeader("采购站");
+        var stops = session.Stops;
+        for (var index = 0; index < stops.Count; index++)
         {
-            var world = worlds[index];
-            var listings = session.Listings.Where(item => string.Equals(item.WorldName, world, StringComparison.Ordinal)).ToArray();
+            var stop = stops[index];
+            var listings = session.Listings.Where(item =>
+                string.Equals(item.DataCenterName, stop.DataCenterName, StringComparison.Ordinal) &&
+                string.Equals(item.WorldName, stop.WorldName, StringComparison.Ordinal)).ToArray();
             var completed = listings.All(static listing => listing.IsPurchased);
             var current = index == session.CurrentServerIndex;
             var flags = current ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
-            if (!ImGui.CollapsingHeader($"{index + 1}  {world}  {listings.Count(item => item.IsPurchased)}/{listings.Length}{(current ? "  当前" : string.Empty)}##Session.{world}", flags))
+            var status = completed ? "完成" : $"{listings.Count(item => item.IsPurchased)}/{listings.Length}";
+            if (!ImGui.CollapsingHeader($"{index + 1}  {stop.Label}  {status}{(current ? "  当前" : string.Empty)}##Session.{stop.DataCenterName}.{stop.WorldName}", flags))
                 continue;
 
-            if (ImGui.SmallButton($"设为当前站##{world}"))
-                purchaseSessionService.SetCurrentWorld(world);
+            if (ImGui.SmallButton($"设为当前站##{stop.DataCenterName}.{stop.WorldName}"))
+                purchaseSessionService.SetCurrentStop(stop.DataCenterName, stop.WorldName);
             ImGui.SameLine();
-            var worldPurchased = completed;
-            if (ImGui.Checkbox($"整站已购买##{world}", ref worldPurchased))
-                purchaseSessionService.SetWorldPurchased(world, worldPurchased);
+            var stopPurchased = completed;
+            if (ImGui.Checkbox($"整站完成##{stop.DataCenterName}.{stop.WorldName}", ref stopPurchased))
+                purchaseSessionService.SetStopPurchased(stop.DataCenterName, stop.WorldName, stopPurchased);
             DrawSessionListings(listings);
         }
     }
@@ -1183,16 +1097,23 @@ public sealed class MainWindow : Window
     {
         if (listings.Count == 0)
             return;
-        if (!ImGui.BeginTable($"##SessionListings.{listings[0].WorldName}", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp))
+
+        var columnCount = configuration.SimpleInterface ? 5 : 7;
+        if (!ImGui.BeginTable($"##SessionListings.{listings[0].DataCenterName}.{listings[0].WorldName}", columnCount,
+                ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp))
             return;
-        ImGui.TableSetupColumn("完成", ImGuiTableColumnFlags.WidthFixed, 50);
+        ImGui.TableSetupColumn("完成", ImGuiTableColumnFlags.WidthFixed, 58);
         ImGui.TableSetupColumn("物品", ImGuiTableColumnFlags.WidthStretch, 1.7f);
-        ImGui.TableSetupColumn("品质", ImGuiTableColumnFlags.WidthFixed, 60);
-        ImGui.TableSetupColumn("数量", ImGuiTableColumnFlags.WidthFixed, 70);
-        ImGui.TableSetupColumn("单价", ImGuiTableColumnFlags.WidthFixed, 95);
-        ImGui.TableSetupColumn("小计", ImGuiTableColumnFlags.WidthFixed, 105);
-        ImGui.TableSetupColumn("数据时间", ImGuiTableColumnFlags.WidthFixed, 110);
+        ImGui.TableSetupColumn("数量", ImGuiTableColumnFlags.WidthFixed, 65);
+        ImGui.TableSetupColumn("单价", ImGuiTableColumnFlags.WidthFixed, 88);
+        ImGui.TableSetupColumn("小计", ImGuiTableColumnFlags.WidthFixed, 95);
+        if (!configuration.SimpleInterface)
+        {
+            ImGui.TableSetupColumn("品质", ImGuiTableColumnFlags.WidthFixed, 55);
+            ImGui.TableSetupColumn("数据时间", ImGuiTableColumnFlags.WidthFixed, 105);
+        }
         ImGui.TableHeadersRow();
+
         foreach (var listing in listings)
         {
             ImGui.TableNextRow();
@@ -1200,18 +1121,26 @@ public sealed class MainWindow : Window
             var purchased = listing.IsPurchased;
             if (ImGui.Checkbox($"##Bought.{listing.SessionListingId}", ref purchased))
                 purchaseSessionService.SetListingPurchased(listing.SessionListingId, purchased);
+            if (listing.AutoConfirmed)
+            {
+                ImGui.SameLine();
+                ImGui.TextDisabled("自动");
+            }
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(listing.ItemName);
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(listing.IsHighQuality ? "HQ" : "NQ");
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(listing.Quantity.ToString(CultureInfo.InvariantCulture));
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(FormatGil(listing.PricePerUnit));
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(FormatGil(listing.TotalPrice));
-            ImGui.TableNextColumn();
-            DrawDataAge(listing.MarketDataTime);
+            if (!configuration.SimpleInterface)
+            {
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(listing.IsHighQuality ? "HQ" : "NQ");
+                ImGui.TableNextColumn();
+                DrawDataAge(listing.MarketDataTime);
+            }
         }
         ImGui.EndTable();
     }
@@ -1269,88 +1198,34 @@ public sealed class MainWindow : Window
 
     private void DrawSettingsPage()
     {
-        DrawPageTitle("设置", "调整路线权重、刷新频率、目标总价和界面密度。 ");
-        DrawSectionHeader("界面");
+        DrawPageTitle("设置", "常用选项保持简洁，其余功能收纳在高级选项中。 ");
+
+        DrawSectionHeader("常用");
+        var simpleInterface = configuration.SimpleInterface;
+        if (ImGui.Checkbox("简洁界面", ref simpleInterface))
+        {
+            configuration.SimpleInterface = simpleInterface;
+            configuration.Save();
+        }
         var compact = configuration.CompactMode;
-        if (ImGui.Checkbox("紧凑模式", ref compact))
+        if (ImGui.Checkbox("紧凑窗口", ref compact))
         {
             configuration.CompactMode = compact;
             configuration.Save();
         }
-        var onboarding = configuration.ShowOnboarding;
-        if (ImGui.Checkbox("在概览显示使用说明", ref onboarding))
+        var autoMark = configuration.AutoMarkMarketPurchases;
+        if (ImGui.Checkbox("交易板购买后自动完成对应挂单", ref autoMark))
         {
-            configuration.ShowOnboarding = onboarding;
+            configuration.AutoMarkMarketPurchases = autoMark;
+            configuration.Save();
+        }
+        var autoAdvance = configuration.AutoAdvanceCompletedWorld;
+        if (ImGui.Checkbox("本站完成后自动切换到下一站", ref autoAdvance))
+        {
+            configuration.AutoAdvanceCompletedWorld = autoAdvance;
             configuration.Save();
         }
 
-        DrawSectionHeader("目标价格");
-        var enableTarget = configuration.EnableTargetTotalPrice;
-        if (ImGui.Checkbox("启用清单总价目标", ref enableTarget))
-        {
-            configuration.EnableTargetTotalPrice = enableTarget;
-            configuration.Save();
-        }
-        var targetPrice = checked((int)Math.Clamp(configuration.TargetTotalPriceGil, 0, int.MaxValue));
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.InputInt("目标总价 Gil", ref targetPrice, 10_000, 100_000))
-        {
-            configuration.TargetTotalPriceGil = Math.Max(0, targetPrice);
-            configuration.Save();
-        }
-
-        DrawSectionHeader("路线策略");
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.BeginCombo("采购策略", GetStrategyLabel(configuration.Strategy)))
-        {
-            foreach (var strategy in Enum.GetValues<PurchaseStrategy>())
-            {
-                var selected = strategy == configuration.Strategy;
-                if (ImGui.Selectable(GetStrategyLabel(strategy), selected))
-                {
-                    configuration.Strategy = strategy;
-                    configuration.Save();
-                }
-                if (selected)
-                    ImGui.SetItemDefaultFocus();
-            }
-            ImGui.EndCombo();
-        }
-
-        var serverThreshold = checked((int)Math.Clamp(configuration.AdditionalServerSavingsThreshold, 0, int.MaxValue));
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.InputInt("每增加一个服务器的成本", ref serverThreshold, 10_000, 50_000))
-        {
-            configuration.AdditionalServerSavingsThreshold = Math.Max(0, serverThreshold);
-            configuration.Save();
-        }
-        ImGui.TextDisabled("平衡模式中，新增服务器只有带来足够价格优势时才会被选择。 ");
-
-        var overbuyPenalty = configuration.OverbuyPenaltyPerUnit;
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.InputInt("每个超额单位惩罚", ref overbuyPenalty, 10, 100))
-        {
-            configuration.OverbuyPenaltyPerUnit = Math.Max(0, overbuyPenalty);
-            configuration.Save();
-        }
-
-        var stalePenalty = configuration.StaleDataPenaltyPerHour;
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.InputInt("每小时旧数据惩罚", ref stalePenalty, 100, 1000))
-        {
-            configuration.StaleDataPenaltyPerHour = Math.Max(0, stalePenalty);
-            configuration.Save();
-        }
-
-        var staleWarning = configuration.StaleDataWarningHours;
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.InputInt("旧数据警告小时", ref staleWarning, 1, 2))
-        {
-            configuration.StaleDataWarningHours = Math.Clamp(staleWarning, 1, 48);
-            configuration.Save();
-        }
-
-        DrawSectionHeader("价格刷新");
         var refreshLabel = configuration.AutoRefreshMinutes == 0 ? "关闭" : $"{configuration.AutoRefreshMinutes} 分钟";
         ImGui.SetNextItemWidth(190);
         if (ImGui.BeginCombo("自动刷新间隔", refreshLabel))
@@ -1371,47 +1246,135 @@ public sealed class MainWindow : Window
             ImGui.EndCombo();
         }
 
-        var cacheMinutes = configuration.CacheMinutes;
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.InputInt("本地价格缓存分钟", ref cacheMinutes, 1, 5))
+        DrawSectionHeader("高级选项");
+        var advanced = configuration.EnableAdvancedOptions;
+        if (ImGui.Checkbox("启用高级选项", ref advanced))
         {
-            configuration.CacheMinutes = Math.Clamp(cacheMinutes, 0, 60);
+            configuration.EnableAdvancedOptions = advanced;
+            if (!advanced && configuration.Scope == PurchaseScope.CrossDataCenterMixed)
+                configuration.Scope = PurchaseScope.CompareAllDataCenters;
             configuration.Save();
         }
 
-        var historyLimit = configuration.SnapshotHistoryLimit;
-        ImGui.SetNextItemWidth(190);
-        if (ImGui.InputInt("保存报价快照数量", ref historyLimit, 1, 5))
+        if (configuration.EnableAdvancedOptions)
         {
-            configuration.SnapshotHistoryLimit = Math.Clamp(historyLimit, 1, 50);
-            configuration.Save();
-        }
+            var crossDataCenter = configuration.EnableCrossDataCenterAnalysis;
+            if (ImGui.Checkbox("启用跨大区混合路线分析", ref crossDataCenter))
+            {
+                configuration.EnableCrossDataCenterAnalysis = crossDataCenter;
+                if (!crossDataCenter && configuration.Scope == PurchaseScope.CrossDataCenterMixed)
+                    configuration.Scope = PurchaseScope.CompareAllDataCenters;
+                configuration.Save();
+            }
+            ImGui.TextDisabled("启用后可在清单页选择跨大区混合路线。 ");
 
-        var inventorySuggestions = configuration.EnableInventorySuggestions;
-        if (ImGui.Checkbox("检测主背包增加并建议计入采购", ref inventorySuggestions))
-        {
-            configuration.EnableInventorySuggestions = inventorySuggestions;
-            configuration.Save();
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.BeginCombo("采购策略", GetStrategyLabel(configuration.Strategy)))
+            {
+                foreach (var strategy in Enum.GetValues<PurchaseStrategy>())
+                {
+                    var selected = strategy == configuration.Strategy;
+                    if (ImGui.Selectable(GetStrategyLabel(strategy), selected))
+                    {
+                        configuration.Strategy = strategy;
+                        configuration.Save();
+                    }
+                    if (selected)
+                        ImGui.SetItemDefaultFocus();
+                }
+                ImGui.EndCombo();
+            }
+
+            var serverThreshold = checked((int)Math.Clamp(configuration.AdditionalServerSavingsThreshold, 0, int.MaxValue));
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.InputInt("新增服务器成本 Gil", ref serverThreshold, 10_000, 50_000))
+            {
+                configuration.AdditionalServerSavingsThreshold = Math.Max(0, serverThreshold);
+                configuration.Save();
+            }
+
+            var dataCenterThreshold = checked((int)Math.Clamp(configuration.AdditionalDataCenterSavingsThreshold, 0, int.MaxValue));
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.InputInt("新增大区成本 Gil", ref dataCenterThreshold, 50_000, 100_000))
+            {
+                configuration.AdditionalDataCenterSavingsThreshold = Math.Max(0, dataCenterThreshold);
+                configuration.Save();
+            }
+
+            var overbuyPenalty = configuration.OverbuyPenaltyPerUnit;
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.InputInt("超额单位惩罚", ref overbuyPenalty, 10, 100))
+            {
+                configuration.OverbuyPenaltyPerUnit = Math.Max(0, overbuyPenalty);
+                configuration.Save();
+            }
+
+            var stalePenalty = configuration.StaleDataPenaltyPerHour;
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.InputInt("旧数据每小时惩罚", ref stalePenalty, 100, 1000))
+            {
+                configuration.StaleDataPenaltyPerHour = Math.Max(0, stalePenalty);
+                configuration.Save();
+            }
+
+            var enableTarget = configuration.EnableTargetTotalPrice;
+            if (ImGui.Checkbox("启用目标总价", ref enableTarget))
+            {
+                configuration.EnableTargetTotalPrice = enableTarget;
+                configuration.Save();
+            }
+            if (configuration.EnableTargetTotalPrice)
+            {
+                var targetPrice = checked((int)Math.Clamp(configuration.TargetTotalPriceGil, 0, int.MaxValue));
+                ImGui.SetNextItemWidth(190);
+                if (ImGui.InputInt("目标总价 Gil", ref targetPrice, 10_000, 100_000))
+                {
+                    configuration.TargetTotalPriceGil = Math.Max(0, targetPrice);
+                    configuration.Save();
+                }
+            }
+
+            var cacheMinutes = configuration.CacheMinutes;
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.InputInt("本地缓存分钟", ref cacheMinutes, 1, 5))
+            {
+                configuration.CacheMinutes = Math.Clamp(cacheMinutes, 0, 60);
+                configuration.Save();
+            }
+
+            var historyLimit = configuration.SnapshotHistoryLimit;
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.InputInt("报价历史数量", ref historyLimit, 1, 5))
+            {
+                configuration.SnapshotHistoryLimit = Math.Clamp(historyLimit, 1, 50);
+                configuration.Save();
+            }
+
+            var inventorySuggestions = configuration.EnableInventorySuggestions;
+            if (ImGui.Checkbox("非交易板物品增加时给出计入建议", ref inventorySuggestions))
+            {
+                configuration.EnableInventorySuggestions = inventorySuggestions;
+                configuration.Save();
+            }
         }
 
         DrawSectionHeader("数据说明");
-        ImGui.TextWrapped("物品名称和可交易状态来自本地游戏数据。挂单来自 Universalis 众包接口，不保证与游戏内当前交易板完全一致。插件按完整挂单计算，只做查询、规划和进度记录，不会自动跨服或自动购买。 ");
+        ImGui.TextWrapped("挂单来自 Universalis 众包接口，不是游戏运营方提供的实时市场数据。 ");
     }
 
     private void DrawCompactQuoteTable(PriceComparisonSnapshot snapshot)
     {
         if (!ImGui.BeginTable("##CompactQuotes", 5, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
             return;
-        ImGui.TableSetupColumn("大区");
-        ImGui.TableSetupColumn("完成度");
+        ImGui.TableSetupColumn("方案");
+        ImGui.TableSetupColumn("完成");
         ImGui.TableSetupColumn("总价");
-        ImGui.TableSetupColumn("服务器");
+        ImGui.TableSetupColumn("路线");
         ImGui.TableSetupColumn("操作");
         ImGui.TableHeadersRow();
-        foreach (var dataCenter in DataCenterCatalog.ChinaDataCenters)
+
+        foreach (var plan in GetOrderedPlans(snapshot))
         {
-            if (!snapshot.Plans.TryGetValue(dataCenter, out var plan))
-                continue;
             ImGui.TableNextRow();
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(plan.DataCenterName);
@@ -1420,13 +1383,24 @@ public sealed class MainWindow : Window
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(FormatGil(plan.TotalCost));
             ImGui.TableNextColumn();
-            ImGui.TextUnformatted(plan.ServerCount.ToString(CultureInfo.InvariantCulture));
+            ImGui.TextUnformatted(plan.IsCrossDataCenter
+                ? $"{plan.DataCenterCount} 区 {plan.ServerCount} 服"
+                : $"{plan.ServerCount} 服");
             ImGui.TableNextColumn();
-            if (ImGui.SmallButton($"打开路线##Compact.{plan.DataCenterName}"))
+            if (ImGui.SmallButton($"路线##CompactRoute.{plan.DataCenterName}"))
             {
                 routeDataCenter = plan.DataCenterName;
                 SetPage(WorkspacePage.Route);
             }
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!plan.IsComplete || plan.ServerCount == 0);
+            if (ImGui.SmallButton($"开始##CompactStart.{plan.DataCenterName}"))
+            {
+                routeDataCenter = plan.DataCenterName;
+                purchaseSessionService.Start(snapshot, plan);
+                SetPage(WorkspacePage.Session);
+            }
+            ImGui.EndDisabled();
         }
         ImGui.EndTable();
     }
@@ -1523,25 +1497,29 @@ public sealed class MainWindow : Window
         ImGui.EndCombo();
     }
 
-    private static void DrawServerPlan(ServerPurchasePlan server)
+    private void DrawServerPlan(ServerPurchasePlan server)
     {
-        if (!ImGui.BeginTable($"##Server.{server.WorldName}", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp))
+        var columns = configuration.SimpleInterface ? 5 : 7;
+        if (!ImGui.BeginTable($"##Server.{server.DataCenterName}.{server.WorldName}", columns,
+                ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp))
             return;
         ImGui.TableSetupColumn("物品", ImGuiTableColumnFlags.WidthStretch, 1.8f);
-        ImGui.TableSetupColumn("品质", ImGuiTableColumnFlags.WidthFixed, 60);
-        ImGui.TableSetupColumn("数量", ImGuiTableColumnFlags.WidthFixed, 75);
-        ImGui.TableSetupColumn("单价", ImGuiTableColumnFlags.WidthFixed, 95);
-        ImGui.TableSetupColumn("小计", ImGuiTableColumnFlags.WidthFixed, 105);
-        ImGui.TableSetupColumn("市场时间", ImGuiTableColumnFlags.WidthFixed, 110);
-        ImGui.TableSetupColumn("挂单风险", ImGuiTableColumnFlags.WidthFixed, 90);
+        ImGui.TableSetupColumn("数量", ImGuiTableColumnFlags.WidthFixed, 70);
+        ImGui.TableSetupColumn("单价", ImGuiTableColumnFlags.WidthFixed, 90);
+        ImGui.TableSetupColumn("小计", ImGuiTableColumnFlags.WidthFixed, 100);
+        ImGui.TableSetupColumn("市场时间", ImGuiTableColumnFlags.WidthFixed, 105);
+        if (!configuration.SimpleInterface)
+        {
+            ImGui.TableSetupColumn("品质", ImGuiTableColumnFlags.WidthFixed, 55);
+            ImGui.TableSetupColumn("类型", ImGuiTableColumnFlags.WidthFixed, 70);
+        }
         ImGui.TableHeadersRow();
+
         foreach (var selected in server.Listings)
         {
             ImGui.TableNextRow();
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(selected.ItemName);
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(selected.Listing.IsHighQuality ? "HQ" : "NQ");
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(selected.Listing.Quantity.ToString(CultureInfo.InvariantCulture));
             ImGui.TableNextColumn();
@@ -1550,8 +1528,13 @@ public sealed class MainWindow : Window
             ImGui.TextUnformatted(FormatGil(selected.Listing.TotalPrice));
             ImGui.TableNextColumn();
             DrawDataAge(selected.Listing.LastReviewTime);
-            ImGui.TableNextColumn();
-            ImGui.TextDisabled("完整挂单");
+            if (!configuration.SimpleInterface)
+            {
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(selected.Listing.IsHighQuality ? "HQ" : "NQ");
+                ImGui.TableNextColumn();
+                ImGui.TextDisabled("完整挂单");
+            }
         }
         ImGui.EndTable();
     }
@@ -1657,19 +1640,30 @@ public sealed class MainWindow : Window
 
     private static void DrawAvailablePlanCombo(PriceComparisonSnapshot snapshot, ref string selectedDataCenter)
     {
-        if (!ImGui.BeginCombo("大区路线", selectedDataCenter))
+        if (!ImGui.BeginCombo("路线方案", selectedDataCenter))
             return;
-        foreach (var dataCenter in DataCenterCatalog.ChinaDataCenters)
+        foreach (var plan in GetOrderedPlans(snapshot))
         {
-            if (!snapshot.Plans.ContainsKey(dataCenter))
-                continue;
-            var selected = string.Equals(selectedDataCenter, dataCenter, StringComparison.Ordinal);
-            if (ImGui.Selectable(dataCenter, selected))
-                selectedDataCenter = dataCenter;
+            var selected = string.Equals(selectedDataCenter, plan.DataCenterName, StringComparison.Ordinal);
+            if (ImGui.Selectable(plan.DataCenterName, selected))
+                selectedDataCenter = plan.DataCenterName;
             if (selected)
                 ImGui.SetItemDefaultFocus();
         }
         ImGui.EndCombo();
+    }
+
+    private static IReadOnlyList<DataCenterPurchasePlan> GetOrderedPlans(PriceComparisonSnapshot snapshot)
+    {
+        var ordered = new List<DataCenterPurchasePlan>();
+        foreach (var dataCenter in DataCenterCatalog.ChinaDataCenters)
+        {
+            if (snapshot.Plans.TryGetValue(dataCenter, out var plan))
+                ordered.Add(plan);
+        }
+        if (snapshot.Plans.TryGetValue(DataCenterCatalog.CrossDataCenterPlanName, out var crossPlan))
+            ordered.Add(crossPlan);
+        return ordered;
     }
 
     private static void DrawDataAge(DateTimeOffset? dataTime)

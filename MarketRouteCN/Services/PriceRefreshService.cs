@@ -102,7 +102,17 @@ public sealed class PriceRefreshService : IDisposable
         if (remaining.Length == 0)
             return;
 
-        RequestRefreshCore(session.ShoppingListId, session.ShoppingListName + " 剩余", remaining, session.SessionId, true, [session.DataCenterName]);
+        var dataCenters = DataCenterCatalog.IsCrossDataCenterPlan(session.DataCenterName)
+            ? DataCenterCatalog.ChinaDataCenters
+            : [session.DataCenterName];
+        RequestRefreshCore(
+            session.ShoppingListId,
+            session.ShoppingListName + " 剩余",
+            remaining,
+            session.SessionId,
+            true,
+            dataCenters,
+            DataCenterCatalog.IsCrossDataCenterPlan(session.DataCenterName));
     }
 
     public void CancelRefresh()
@@ -116,7 +126,8 @@ public sealed class PriceRefreshService : IDisposable
         IReadOnlyCollection<ShoppingListEntry> entries,
         Guid? sourceSessionId,
         bool forceRefresh,
-        IReadOnlyCollection<string>? dataCenterOverride = null)
+        IReadOnlyCollection<string>? dataCenterOverride = null,
+        bool includeCrossDataCenterPlan = false)
     {
         lock (stateLock)
         {
@@ -133,6 +144,7 @@ public sealed class PriceRefreshService : IDisposable
                 sourceSessionId,
                 forceRefresh,
                 dataCenterOverride,
+                includeCrossDataCenterPlan,
                 activeRequestCancellation.Token);
         }
     }
@@ -156,6 +168,7 @@ public sealed class PriceRefreshService : IDisposable
         Guid? sourceSessionId,
         bool forceRefresh,
         IReadOnlyCollection<string>? dataCenterOverride,
+        bool includeCrossDataCenterPlan,
         CancellationToken cancellationToken)
     {
         try
@@ -167,33 +180,59 @@ public sealed class PriceRefreshService : IDisposable
                 return;
             }
 
+            var crossDataCenterMode = includeCrossDataCenterPlan ||
+                                      (dataCenterOverride is null &&
+                                       configuration.EnableAdvancedOptions &&
+                                       configuration.EnableCrossDataCenterAnalysis &&
+                                       configuration.Scope == PurchaseScope.CrossDataCenterMixed);
             var dataCenters = dataCenterOverride?.ToArray() ?? (configuration.Scope == PurchaseScope.SingleDataCenter
                 ? [configuration.SelectedDataCenter]
                 : DataCenterCatalog.ChinaDataCenters);
 
             var requestedAt = DateTimeOffset.UtcNow;
+            var itemIds = shoppingList.Select(static entry => entry.ItemId).ToArray();
             var tasks = dataCenters.Select(async dataCenter =>
             {
                 var data = await universalisClient.GetListingsAsync(
                     dataCenter,
-                    shoppingList.Select(static entry => entry.ItemId).ToArray(),
+                    itemIds,
                     configuration.CacheMinutes,
                     forceRefresh,
                     cancellationToken).ConfigureAwait(false);
+                return (DataCenter: dataCenter, Data: data);
+            });
 
-                return optimizer.BuildPlan(
-                    dataCenter,
+            var fetched = await Task.WhenAll(tasks).ConfigureAwait(false);
+            var marketDataByDataCenter = fetched.ToDictionary(
+                static item => item.DataCenter,
+                static item => item.Data,
+                StringComparer.Ordinal);
+            var plans = fetched.Select(item => optimizer.BuildPlan(
+                    item.DataCenter,
                     shoppingList,
-                    data,
+                    item.Data,
                     requestedAt,
                     configuration.Strategy,
                     configuration.AdditionalServerSavingsThreshold,
                     configuration.OverbuyPenaltyPerUnit,
                     configuration.StaleDataPenaltyPerHour,
-                    cancellationToken);
-            });
+                    cancellationToken))
+                .ToList();
 
-            var plans = await Task.WhenAll(tasks).ConfigureAwait(false);
+            if (crossDataCenterMode)
+            {
+                plans.Add(optimizer.BuildCrossDataCenterPlan(
+                    shoppingList,
+                    marketDataByDataCenter,
+                    requestedAt,
+                    configuration.Strategy,
+                    configuration.AdditionalServerSavingsThreshold,
+                    configuration.AdditionalDataCenterSavingsThreshold,
+                    configuration.OverbuyPenaltyPerUnit,
+                    configuration.StaleDataPenaltyPerHour,
+                    cancellationToken));
+            }
+
             var snapshot = new PriceComparisonSnapshot
             {
                 ShoppingListId = shoppingListId,

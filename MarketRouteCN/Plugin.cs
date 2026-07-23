@@ -25,6 +25,8 @@ public sealed class Plugin : IDalamudPlugin
         IFramework framework,
         IDataManager dataManager,
         IGameInventory gameInventory,
+        IMarketBoard marketBoard,
+        IPlayerState playerState,
         IPluginLog log)
     {
         this.pluginInterface = pluginInterface;
@@ -46,7 +48,13 @@ public sealed class Plugin : IDalamudPlugin
             optimizer,
             quoteHistoryService,
             log);
-        purchaseSessionService = new PurchaseSessionService(Configuration, framework, gameInventory, log);
+        purchaseSessionService = new PurchaseSessionService(
+            Configuration,
+            framework,
+            gameInventory,
+            marketBoard,
+            playerState,
+            log);
 
         mainWindow = new MainWindow(
             Configuration,
@@ -71,7 +79,7 @@ public sealed class Plugin : IDalamudPlugin
         pluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
         pluginInterface.UiBuilder.OpenConfigUi += OpenSettings;
 
-        log.Information("MarketRoute CN V0.8 initialized.");
+        log.Information("MarketRoute CN V0.9 initialized.");
     }
 
     public Configuration Configuration { get; }

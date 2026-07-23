@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0.0
+
+- Removed the numbered workflow strip and reduced the main sidebar to the five primary work areas.
+- Simplified overview, quote cards, route tables and purchase-session tables while retaining direct navigation actions.
+- Added automatic route completion after a matching confirmed market-board purchase on the planned world.
+- Added delayed HQ and NQ confirmation through inventory changes and retained manual completion as a fallback.
+- Added automatic current-stop synchronization and optional automatic advance after completing a stop.
+- Added advanced cross-data-center mixed-route analysis with a configurable additional data-center cost.
+- Added cross-data-center route, quote, alternative and purchase-session display support.
+- Reduced the in-game data notice to the single Universalis source statement requested for the compact interface.
+- Migrated configuration schema to version 9.
+
 ## 0.8.0.0
 
 - Rebuilt the main interface as a persistent workspace with overview, sidebar navigation and direct workflow links.

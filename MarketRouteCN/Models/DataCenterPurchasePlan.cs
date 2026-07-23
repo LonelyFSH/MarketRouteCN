@@ -1,3 +1,5 @@
+using MarketRouteCN.Services;
+
 namespace MarketRouteCN.Models;
 
 public sealed class DataCenterPurchasePlan
@@ -15,6 +17,8 @@ public sealed class DataCenterPurchasePlan
     public required DateTimeOffset QueryTime { get; init; }
 
     public required long OptimizationScore { get; init; }
+
+    public bool IsCrossDataCenter => DataCenterName == DataCenterCatalog.CrossDataCenterPlanName;
 
     public bool IsComplete => ItemPlans.Count > 0 && ItemPlans.All(static item => item.IsComplete);
 
@@ -35,6 +39,12 @@ public sealed class DataCenterPurchasePlan
     public int OverbuyUnits => ItemPlans.Sum(static item => item.OverbuyQuantity);
 
     public int ServerCount => ServerPlans.Count;
+
+    public int DataCenterCount => ServerPlans
+        .Select(static server => server.DataCenterName)
+        .Where(static name => !string.IsNullOrWhiteSpace(name))
+        .Distinct(StringComparer.Ordinal)
+        .Count();
 
     public int LowLiquidityItems => ItemPlans.Count(static item => item.IsComplete && item.EligibleListingCount <= 1);
 

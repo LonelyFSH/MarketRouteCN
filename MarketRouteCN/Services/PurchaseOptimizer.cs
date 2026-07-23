@@ -64,11 +64,131 @@ public sealed class PurchaseOptimizer
             var score = CalculateScore(strategy, totalCost, actualWorlds.Length, overbuy,
                 additionalServerSavingsThreshold, overbuyPenaltyPerUnit, stalePenalty);
 
-            candidates.Add(new CandidatePlan(itemPlans, actualWorlds, complete, totalCost, overbuy, score));
+            candidates.Add(new CandidatePlan(itemPlans, actualWorlds, 1, complete, totalCost, overbuy, score));
+        }
+
+        return SelectCandidatePlan(dataCenter, shoppingList, marketData, queryTime, strategy, candidates);
+    }
+
+    public DataCenterPurchasePlan BuildCrossDataCenterPlan(
+        IReadOnlyList<ShoppingListEntry> shoppingList,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<uint, ItemMarketData>> marketDataByDataCenter,
+        DateTimeOffset queryTime,
+        PurchaseStrategy strategy,
+        long additionalServerSavingsThreshold,
+        long additionalDataCenterSavingsThreshold,
+        int overbuyPenaltyPerUnit,
+        int staleDataPenaltyPerHour,
+        CancellationToken cancellationToken)
+    {
+        var dataCenters = DataCenterCatalog.ChinaDataCenters
+            .Where(marketDataByDataCenter.ContainsKey)
+            .ToArray();
+
+        if (dataCenters.Length == 0)
+            return BuildCrossEmptyPlan(shoppingList, queryTime, strategy);
+
+        var itemPlansByDataCenter = new Dictionary<(Guid EntryId, string DataCenter), ItemPurchasePlan>();
+        foreach (var request in shoppingList)
+        {
+            foreach (var dataCenter in dataCenters)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var marketData = marketDataByDataCenter[dataCenter].GetValueOrDefault(request.ItemId);
+                itemPlansByDataCenter[(request.EntryId, dataCenter)] = BuildItemPlan(request, marketData, static _ => true);
+            }
+        }
+
+        var candidates = new List<CandidatePlan>();
+        var maskCount = 1 << dataCenters.Length;
+        for (var mask = 1; mask < maskCount; mask++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var selectedDataCenters = dataCenters
+                .Where((_, index) => (mask & (1 << index)) != 0)
+                .ToArray();
+
+            var itemPlans = new ItemPurchasePlan[shoppingList.Count];
+            var complete = true;
+            for (var index = 0; index < shoppingList.Count; index++)
+            {
+                var request = shoppingList[index];
+                var options = selectedDataCenters
+                    .Select(dataCenter => itemPlansByDataCenter[(request.EntryId, dataCenter)])
+                    .ToArray();
+
+                var completeOptions = options.Where(static plan => plan.IsComplete).ToArray();
+                var selected = completeOptions.Length > 0
+                    ? completeOptions
+                        .OrderBy(static plan => plan.TotalCost)
+                        .ThenBy(static plan => plan.SelectedListings
+                            .Select(listing => listing.Listing.WorldName)
+                            .Distinct(StringComparer.Ordinal)
+                            .Count())
+                        .ThenBy(static plan => plan.OverbuyQuantity)
+                        .First()
+                    : options
+                        .OrderByDescending(static plan => plan.PurchasedQuantity)
+                        .ThenBy(static plan => plan.TotalCost)
+                        .First();
+
+                itemPlans[index] = selected;
+                complete &= selected.IsComplete;
+            }
+
+            var selectedListings = itemPlans.SelectMany(static item => item.SelectedListings).ToArray();
+            var worlds = selectedListings
+                .Select(static listing => $"{listing.Listing.DataCenterName} · {listing.Listing.WorldName}")
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(static world => world, StringComparer.Ordinal)
+                .ToArray();
+            var actualDataCenterCount = selectedListings
+                .Select(static listing => listing.Listing.DataCenterName)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+
+            if (worlds.Length == 0 || actualDataCenterCount == 0)
+                continue;
+
+            var totalCost = itemPlans.Sum(static item => item.TotalCost);
+            var overbuy = itemPlans.Sum(static item => item.OverbuyQuantity);
+            var stalePenalty = CalculateStalePenalty(itemPlans, staleDataPenaltyPerHour);
+            var score = CalculateCrossDataCenterScore(
+                strategy,
+                totalCost,
+                actualDataCenterCount,
+                worlds.Length,
+                overbuy,
+                additionalDataCenterSavingsThreshold,
+                additionalServerSavingsThreshold,
+                overbuyPenaltyPerUnit,
+                stalePenalty);
+
+            candidates.Add(new CandidatePlan(itemPlans, worlds, actualDataCenterCount, complete, totalCost, overbuy, score));
         }
 
         if (candidates.Count == 0)
-            return BuildEmptyPlan(dataCenter, shoppingList, marketData, queryTime, strategy);
+            return BuildCrossEmptyPlan(shoppingList, queryTime, strategy);
+
+        return SelectCandidatePlan(
+            DataCenterCatalog.CrossDataCenterPlanName,
+            shoppingList,
+            new Dictionary<uint, ItemMarketData>(),
+            queryTime,
+            strategy,
+            candidates);
+    }
+
+    private static DataCenterPurchasePlan SelectCandidatePlan(
+        string planName,
+        IReadOnlyList<ShoppingListEntry> shoppingList,
+        IReadOnlyDictionary<uint, ItemMarketData> marketData,
+        DateTimeOffset queryTime,
+        PurchaseStrategy strategy,
+        IReadOnlyList<CandidatePlan> candidates)
+    {
+        if (candidates.Count == 0)
+            return BuildEmptyPlan(planName, shoppingList, marketData, queryTime, strategy);
 
         var completeCandidates = candidates.Where(static candidate => candidate.IsComplete).ToArray();
         var selected = completeCandidates.Length > 0
@@ -79,20 +199,23 @@ public sealed class PurchaseOptimizer
                     Math.Min(item.PurchasedQuantity, checked((int)item.Request.Quantity))))
                 .ThenBy(candidate => GetSortKey(candidate, strategy))
                 .First();
+
         var alternatives = completeCandidates
-            .GroupBy(static candidate => candidate.Worlds.Count)
+            .GroupBy(static candidate => new { candidate.DataCenterCount, ServerCount = candidate.Worlds.Count })
             .Select(group => group.OrderBy(static candidate => candidate.TotalCost)
                 .ThenBy(static candidate => candidate.OverbuyQuantity)
                 .First())
-            .OrderBy(static candidate => candidate.Worlds.Count)
+            .OrderBy(static candidate => candidate.DataCenterCount)
+            .ThenBy(static candidate => candidate.Worlds.Count)
             .Select(static candidate => new RouteAlternative(
                 candidate.Worlds.Count,
                 candidate.TotalCost,
                 candidate.OverbuyQuantity,
-                candidate.Worlds))
+                candidate.Worlds,
+                candidate.DataCenterCount))
             .ToArray();
 
-        return BuildDataCenterPlan(dataCenter, selected.ItemPlans, alternatives, queryTime, strategy, selected.Score);
+        return BuildDataCenterPlan(planName, selected.ItemPlans, alternatives, queryTime, strategy, selected.Score);
     }
 
     private static DataCenterPurchasePlan BuildEmptyPlan(
@@ -108,6 +231,35 @@ public sealed class PurchaseOptimizer
         return BuildDataCenterPlan(dataCenter, itemPlans, [], queryTime, strategy, long.MaxValue);
     }
 
+    private static DataCenterPurchasePlan BuildCrossEmptyPlan(
+        IReadOnlyList<ShoppingListEntry> shoppingList,
+        DateTimeOffset queryTime,
+        PurchaseStrategy strategy)
+    {
+        var itemPlans = shoppingList.Select(static entry => new ItemPurchasePlan
+        {
+            Request = entry,
+            SelectedListings = [],
+            TotalCost = 0,
+            PurchasedQuantity = 0,
+            IsComplete = false,
+            DataStatus = MarketDataStatus.RequestFailed,
+            MarketDataTime = null,
+            EligibleListingCount = 0,
+            LowestUnitPrice = 0,
+            HasFallbackPlan = false,
+            FallbackCost = 0,
+        }).ToArray();
+
+        return BuildDataCenterPlan(
+            DataCenterCatalog.CrossDataCenterPlanName,
+            itemPlans,
+            [],
+            queryTime,
+            strategy,
+            long.MaxValue);
+    }
+
     private static DataCenterPurchasePlan BuildDataCenterPlan(
         string dataCenter,
         IReadOnlyList<ItemPurchasePlan> itemPlans,
@@ -118,16 +270,22 @@ public sealed class PurchaseOptimizer
     {
         var serverPlans = itemPlans
             .SelectMany(static item => item.SelectedListings)
-            .GroupBy(static listing => listing.Listing.WorldName, StringComparer.Ordinal)
+            .GroupBy(static listing => new
+            {
+                listing.Listing.DataCenterName,
+                listing.Listing.WorldName,
+            })
             .Select(group => new ServerPurchasePlan
             {
-                WorldName = group.Key,
+                DataCenterName = group.Key.DataCenterName,
+                WorldName = group.Key.WorldName,
                 Listings = group
                     .OrderBy(static listing => listing.ItemName, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(static listing => listing.Listing.PricePerUnit)
                     .ToArray(),
             })
-            .OrderByDescending(static server => server.Listings.Count)
+            .OrderBy(static server => server.DataCenterName, StringComparer.Ordinal)
+            .ThenByDescending(static server => server.Listings.Count)
             .ThenByDescending(static server => server.TotalCost)
             .ThenBy(static server => server.WorldName, StringComparer.Ordinal)
             .ToArray();
@@ -327,6 +485,33 @@ public sealed class PurchaseOptimizer
         };
     }
 
+    private static long CalculateCrossDataCenterScore(
+        PurchaseStrategy strategy,
+        long cost,
+        int dataCenterCount,
+        int serverCount,
+        int overbuy,
+        long dataCenterPenalty,
+        long serverPenalty,
+        int overbuyPenalty,
+        long stalePenalty)
+    {
+        return strategy switch
+        {
+            PurchaseStrategy.LowestPrice => cost,
+            PurchaseStrategy.FewestServers => checked(
+                (long)dataCenterCount * 1_000_000_000_000_000L +
+                (long)serverCount * 1_000_000_000_000L +
+                cost),
+            _ => checked(
+                cost +
+                Math.Max(0, dataCenterCount - 1) * dataCenterPenalty +
+                Math.Max(0, serverCount - 1) * serverPenalty +
+                (long)overbuy * overbuyPenalty +
+                stalePenalty),
+        };
+    }
+
     private static long CalculateStalePenalty(IEnumerable<ItemPurchasePlan> itemPlans, int penaltyPerHour)
     {
         if (penaltyPerHour <= 0)
@@ -344,13 +529,15 @@ public sealed class PurchaseOptimizer
         return total;
     }
 
-    private static (long Primary, long Secondary, long Tertiary) GetSortKey(CandidatePlan candidate, PurchaseStrategy strategy)
+    private static (long Primary, long Secondary, long Tertiary, long Quaternary) GetSortKey(
+        CandidatePlan candidate,
+        PurchaseStrategy strategy)
     {
         return strategy switch
         {
-            PurchaseStrategy.LowestPrice => (candidate.TotalCost, candidate.Worlds.Count, candidate.OverbuyQuantity),
-            PurchaseStrategy.FewestServers => (candidate.Worlds.Count, candidate.TotalCost, candidate.OverbuyQuantity),
-            _ => (candidate.Score, candidate.TotalCost, candidate.Worlds.Count),
+            PurchaseStrategy.LowestPrice => (candidate.TotalCost, candidate.DataCenterCount, candidate.Worlds.Count, candidate.OverbuyQuantity),
+            PurchaseStrategy.FewestServers => (candidate.DataCenterCount, candidate.Worlds.Count, candidate.TotalCost, candidate.OverbuyQuantity),
+            _ => (candidate.Score, candidate.TotalCost, candidate.DataCenterCount, candidate.Worlds.Count),
         };
     }
 
@@ -368,6 +555,7 @@ public sealed class PurchaseOptimizer
     private sealed record CandidatePlan(
         IReadOnlyList<ItemPurchasePlan> ItemPlans,
         IReadOnlyList<string> Worlds,
+        int DataCenterCount,
         bool IsComplete,
         long TotalCost,
         int OverbuyQuantity,

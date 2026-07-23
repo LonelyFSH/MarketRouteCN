@@ -2,6 +2,7 @@ namespace MarketRouteCN.Models;
 
 public sealed record MarketListing(
     uint ItemId,
+    string DataCenterName,
     uint WorldId,
     string WorldName,
     int PricePerUnit,

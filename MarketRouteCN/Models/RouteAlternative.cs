@@ -4,4 +4,5 @@ public sealed record RouteAlternative(
     int ServerCount,
     long TotalCost,
     int OverbuyQuantity,
-    IReadOnlyList<string> Worlds);
+    IReadOnlyList<string> Worlds,
+    int DataCenterCount = 1);

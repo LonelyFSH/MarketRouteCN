@@ -27,7 +27,7 @@ public sealed class UniversalisClient : IDisposable
         };
 
         httpClient.DefaultRequestHeaders.UserAgent.Clear();
-        httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MarketRouteCN", "0.8.0"));
+        httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MarketRouteCN", "0.9.0"));
         httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(+https://github.com/LonelyFSH/MarketRouteCN)"));
     }
 
@@ -147,11 +147,11 @@ public sealed class UniversalisClient : IDisposable
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var result = new Dictionary<uint, ItemMarketData>();
-        ParseResponse(document.RootElement, result, itemIds);
+        ParseResponse(dataCenter, document.RootElement, result, itemIds);
         return result;
     }
 
-    private static void ParseResponse(JsonElement root, IDictionary<uint, ItemMarketData> destination, IReadOnlyCollection<uint> requested)
+    private static void ParseResponse(string dataCenter, JsonElement root, IDictionary<uint, ItemMarketData> destination, IReadOnlyCollection<uint> requested)
     {
         var unresolved = new HashSet<uint>();
         if (root.TryGetProperty("unresolvedItems", out var unresolvedElement) && unresolvedElement.ValueKind == JsonValueKind.Array)
@@ -166,11 +166,11 @@ public sealed class UniversalisClient : IDisposable
         if (root.TryGetProperty("items", out var itemsElement) && itemsElement.ValueKind == JsonValueKind.Object)
         {
             foreach (var property in itemsElement.EnumerateObject())
-                ParseItem(property.Value, destination);
+                ParseItem(dataCenter, property.Value, destination);
         }
         else
         {
-            ParseItem(root, destination);
+            ParseItem(dataCenter, root, destination);
         }
 
         foreach (var itemId in requested)
@@ -182,7 +182,7 @@ public sealed class UniversalisClient : IDisposable
         }
     }
 
-    private static void ParseItem(JsonElement itemElement, IDictionary<uint, ItemMarketData> destination)
+    private static void ParseItem(string dataCenter, JsonElement itemElement, IDictionary<uint, ItemMarketData> destination)
     {
         if (!TryGetUInt32(itemElement, "itemID", out var itemId))
             return;
@@ -210,7 +210,7 @@ public sealed class UniversalisClient : IDisposable
                     ? DateTimeOffset.FromUnixTimeSeconds(reviewSeconds)
                     : (DateTimeOffset?)null;
 
-                listings.Add(new MarketListing(itemId, worldId, worldName, pricePerUnit, quantity, isHighQuality, reviewTime));
+                listings.Add(new MarketListing(itemId, dataCenter, worldId, worldName, pricePerUnit, quantity, isHighQuality, reviewTime));
             }
         }
 

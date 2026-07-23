@@ -28,7 +28,7 @@ public sealed class PurchaseSession
 
     public long PlannedCost => Listings.Sum(static listing => listing.TotalPrice);
 
-    public long ConfirmedCost => Listings.Where(static listing => listing.IsPurchased).Sum(static listing => listing.TotalPrice);
+    public long ConfirmedCost => Listings.Where(static listing => listing.IsPurchased).Sum(static listing => listing.ActualTotalPrice ?? listing.TotalPrice);
 
     public int TotalListings => Listings.Count;
 
@@ -36,10 +36,12 @@ public sealed class PurchaseSession
 
     public bool IsComplete => Listings.Count > 0 && Listings.All(static listing => listing.IsPurchased);
 
-    public IReadOnlyList<string> Worlds => Listings
-        .Select(static listing => listing.WorldName)
-        .Distinct(StringComparer.Ordinal)
+    public IReadOnlyList<PurchaseStop> Stops => Listings
+        .GroupBy(static listing => new { listing.DataCenterName, listing.WorldName })
+        .Select(static group => new PurchaseStop(group.Key.DataCenterName, group.Key.WorldName))
         .ToArray();
+
+    public IReadOnlyList<string> Worlds => Stops.Select(static stop => stop.WorldName).ToArray();
 }
 
 public sealed class SessionListing
@@ -54,6 +56,8 @@ public sealed class SessionListing
 
     public PurchaseQuality RequestedQuality { get; set; }
 
+    public string DataCenterName { get; set; } = string.Empty;
+
     public string WorldName { get; set; } = string.Empty;
 
     public int Quantity { get; set; }
@@ -66,7 +70,15 @@ public sealed class SessionListing
 
     public bool IsPurchased { get; set; }
 
+    public bool AutoConfirmed { get; set; }
+
+    public int? ActualPricePerUnit { get; set; }
+
+    public DateTimeOffset? PurchasedAt { get; set; }
+
     public long TotalPrice => (long)Quantity * PricePerUnit;
+
+    public long? ActualTotalPrice => ActualPricePerUnit is null ? null : (long)Quantity * ActualPricePerUnit.Value;
 }
 
 public sealed class SessionRequirement
@@ -82,4 +94,11 @@ public sealed class SessionRequirement
     public PurchaseQuality Quality { get; set; }
 
     public bool SupportsHighQuality { get; set; }
+}
+
+public sealed record PurchaseStop(string DataCenterName, string WorldName)
+{
+    public string Label => string.IsNullOrWhiteSpace(DataCenterName)
+        ? WorldName
+        : $"{DataCenterName} · {WorldName}";
 }

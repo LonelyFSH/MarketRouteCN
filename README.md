@@ -2,33 +2,40 @@
 
 MarketRoute CN is a Dalamud plugin for planning batch market-board purchases on the Chinese FFXIV service.
 
-## V0.8 workflow
+## V0.9 highlights
 
-The main window is a continuous workspace rather than a set of isolated tabs.
-
-- Overview shows the current list, latest complete quote, data confidence and purchase progress.
-- The workflow strip jumps directly between list, quote, route and purchase stages.
-- A price refresh can automatically open the quote result.
-- Quote cards open a selected data-center route or start a purchase session immediately.
-- The purchase page can complete the current world and advance to the next world in one action.
+- Streamlined workspace without the numbered workflow strip
+- Direct links from quotes to routes and purchase sessions
+- Automatic completion of matching planned listings after a confirmed market-board purchase
+- Automatic synchronization to a planned stop when the character changes world
+- Optional automatic advance after every listing at the current stop is complete
+- Advanced cross-data-center mixed-route analysis
+- Compact quote cards, route summaries and purchase tables
 
 ## Main features
 
 - Multiple persistent shopping lists
 - Local marketable-item search using game data
 - Quantity and Any, HQ or NQ requirements
-- Plain text and MakePlace-style import
-- CSV and JSON clipboard import and export
-- Single-data-center procurement or four-data-center complete-price comparison
+- Plain text, MakePlace-style, CSV and JSON import and export
+- Single-data-center procurement and four-data-center complete-price comparison
+- Optional cross-data-center mixed procurement analysis
 - Complete-listing bundle optimization
-- Exact server-subset route optimization
+- Exact server-subset route optimization inside each data center
 - Lowest price, balanced and fewest servers strategies
 - Quote request time and market-data age
-- Quote trend comparison against previous snapshots
-- Fallback risk price and low-liquidity warnings
-- Optional total-price target
-- Persistent purchase sessions and inventory increase suggestions
+- Persistent purchase sessions and remaining-route refresh
 - Automatic refresh with local request caching
+
+## Automatic purchase recording
+
+During an active purchase session, the plugin listens for a confirmed market-board purchase. It marks a planned listing complete only when the item ID, purchased stack quantity and current world match an unfinished route listing. HQ ambiguity is resolved with the subsequent inventory change when necessary. Manual checkboxes remain available as a fallback.
+
+## Cross-data-center analysis
+
+Enable Advanced options and Cross-data-center mixed route analysis in Settings. Then select Cross-data-center mixed route on the shopping-list page before refreshing prices.
+
+The optimizer compares non-empty subsets of the four Chinese data centers. Each requested item is assigned to the lowest-scoring complete plan in one selected data center, and the final score can include additional data-center and server costs.
 
 ## Commands
 
@@ -45,9 +52,7 @@ The main window is a continuous workspace rather than a set of isolated tabs.
 
 ## Data notice
 
-Item metadata is read from the local game client. Market listings are requested from the Universalis community data service. The displayed listings may be stale or may no longer exist in the in-game market board.
-
-The plugin does not automate world travel, market-board interaction or purchasing.
+Market listings are requested from the Universalis community data service and are not real-time market data supplied by the game operator.
 
 ## Build
 
