@@ -1,1 +1,31 @@
-[]
+[
+  {
+    "Author": "LonelyFSH",
+    "Name": "MarketRoute CN",
+    "Punchline": "国服全品类批量比价、智能路线与连续采购工作区。",
+    "Description": "面向 FF14 国服交易板的批量采购规划插件。V0.8 提供概览工作区与直接跳转流程，支持多个采购清单、文本 CSV JSON 导入导出、任意/HQ/NQ 条件、四大区完整报价比较、完整挂单组合、最低价/平衡/最少服务器路线策略、报价趋势与风险价、目标总价、采购会话与中断恢复，并显示查询时间和市场数据时间。价格来自 Universalis 众包数据。",
+    "Tags": [
+      "market",
+      "china",
+      "shopping",
+      "price",
+      "route"
+    ],
+    "CategoryTags": [
+      "Utility",
+      "UI"
+    ],
+    "InternalName": "MarketRouteCN",
+    "AssemblyVersion": "0.8.0.0",
+    "TestingAssemblyVersion": null,
+    "RepoUrl": "https://github.com/LonelyFSH/MarketRouteCN",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "IsHide": false,
+    "IsTestingExclusive": false,
+    "DownloadLinkInstall": "https://github.com/LonelyFSH/MarketRouteCN/releases/download/v0.8.0.0/MarketRouteCN.zip",
+    "DownloadLinkUpdate": "https://github.com/LonelyFSH/MarketRouteCN/releases/download/v0.8.0.0/MarketRouteCN.zip",
+    "LastUpdate": 1784772434,
+    "Changelog": "MarketRoute CN 0.8.0.0"
+  }
+]
