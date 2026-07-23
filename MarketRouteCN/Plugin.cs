@@ -9,7 +9,6 @@ namespace MarketRouteCN;
 
 public sealed class Plugin : IDalamudPlugin
 {
-    private const string PrimaryCommand = "/marketroute";
     private const string ShortCommand = "/mrcn";
 
     private readonly IDalamudPluginInterface pluginInterface;
@@ -66,20 +65,16 @@ public sealed class Plugin : IDalamudPlugin
             purchaseSessionService);
 
         WindowSystem.AddWindow(mainWindow);
-        commandManager.AddHandler(PrimaryCommand, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "打开 MarketRoute CN。可用参数 list import quote route session settings。",
-        });
         commandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "打开 MarketRoute CN。可用参数 list import quote route session settings。",
+            HelpMessage = "打开MarketRouteCN",
         });
 
         pluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         pluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
         pluginInterface.UiBuilder.OpenConfigUi += OpenSettings;
 
-        log.Information("MarketRoute CN V0.9 initialized.");
+        log.Information("MarketRoute CN V0.9.5.0 initialized.");
     }
 
     public Configuration Configuration { get; }
@@ -92,7 +87,6 @@ public sealed class Plugin : IDalamudPlugin
         pluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
         pluginInterface.UiBuilder.OpenConfigUi -= OpenSettings;
 
-        commandManager.RemoveHandler(PrimaryCommand);
         commandManager.RemoveHandler(ShortCommand);
 
         WindowSystem.RemoveAllWindows();

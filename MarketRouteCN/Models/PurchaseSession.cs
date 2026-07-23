@@ -28,11 +28,21 @@ public sealed class PurchaseSession
 
     public long PlannedCost => Listings.Sum(static listing => listing.TotalPrice);
 
-    public long ConfirmedCost => Listings.Where(static listing => listing.IsPurchased).Sum(static listing => listing.ActualTotalPrice ?? listing.TotalPrice);
+    public long ConfirmedCost => Listings
+        .Where(static listing => listing.AcquiredQuantity > 0)
+        .Sum(static listing =>
+        {
+            var unitPrice = listing.ActualPricePerUnit ?? listing.PricePerUnit;
+            return (long)listing.AcquiredQuantity * unitPrice;
+        });
 
     public int TotalListings => Listings.Count;
 
     public int PurchasedListings => Listings.Count(static listing => listing.IsPurchased);
+
+    public int PlannedQuantity => Listings.Sum(static listing => listing.Quantity);
+
+    public int AcquiredQuantity => Listings.Sum(static listing => listing.AcquiredQuantity);
 
     public bool IsComplete => Listings.Count > 0 && Listings.All(static listing => listing.IsPurchased);
 
@@ -70,11 +80,15 @@ public sealed class SessionListing
 
     public bool IsPurchased { get; set; }
 
+    public int AcquiredQuantity { get; set; }
+
     public bool AutoConfirmed { get; set; }
 
     public int? ActualPricePerUnit { get; set; }
 
     public DateTimeOffset? PurchasedAt { get; set; }
+
+    public int RemainingQuantity => Math.Max(0, Quantity - AcquiredQuantity);
 
     public long TotalPrice => (long)Quantity * PricePerUnit;
 

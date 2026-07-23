@@ -10,7 +10,7 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 9;
+    public int Version { get; set; } = 10;
 
     public PurchaseScope Scope { get; set; } = PurchaseScope.CompareAllDataCenters;
 
@@ -39,6 +39,12 @@ public sealed class Configuration : IPluginConfiguration
     public bool AutoAdvanceCompletedWorld { get; set; } = true;
 
     public bool EnableInventorySuggestions { get; set; } = true;
+
+    public bool AutoRecordInventoryChanges { get; set; } = true;
+
+    public int InventoryScanIntervalMilliseconds { get; set; } = 500;
+
+    public int InventoryDebounceMilliseconds { get; set; } = 1000;
 
     public bool EnableAdvancedOptions { get; set; }
 
@@ -115,6 +121,12 @@ public sealed class Configuration : IPluginConfiguration
                 if (string.IsNullOrWhiteSpace(listing.DataCenterName) &&
                     !string.Equals(ActiveSession.DataCenterName, Services.DataCenterCatalog.CrossDataCenterPlanName, StringComparison.Ordinal))
                     listing.DataCenterName = ActiveSession.DataCenterName;
+
+                listing.AcquiredQuantity = Math.Clamp(listing.AcquiredQuantity, 0, listing.Quantity);
+                if (listing.IsPurchased && listing.AcquiredQuantity < listing.Quantity)
+                    listing.AcquiredQuantity = listing.Quantity;
+                if (!listing.IsPurchased && listing.AcquiredQuantity >= listing.Quantity)
+                    listing.IsPurchased = true;
             }
         }
 
@@ -141,7 +153,17 @@ public sealed class Configuration : IPluginConfiguration
             AutoAdvanceCompletedWorld = true;
         }
 
-        Version = 9;
+        if (previousVersion < 10)
+        {
+            AutoRecordInventoryChanges = true;
+            InventoryScanIntervalMilliseconds = 500;
+            InventoryDebounceMilliseconds = 1000;
+        }
+
+        InventoryScanIntervalMilliseconds = Math.Clamp(InventoryScanIntervalMilliseconds, 250, 2000);
+        InventoryDebounceMilliseconds = Math.Clamp(InventoryDebounceMilliseconds, 500, 3000);
+
+        Version = 10;
         Save();
     }
 

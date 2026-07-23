@@ -10,6 +10,7 @@ namespace MarketRouteCN.Windows;
 public sealed class MainWindow : Window
 {
     private static readonly int[] RefreshOptions = [0, 5, 10, 15, 30, 60];
+    private static readonly int[] InventoryScanOptions = [250, 500, 1000];
 
     private readonly Configuration configuration;
     private readonly ItemCatalogService itemCatalogService;
@@ -969,7 +970,7 @@ public sealed class MainWindow : Window
 
     private void DrawSessionPage()
     {
-        DrawPageTitle("采购进度", "交易板购买成功后会自动完成对应挂单。 ");
+        DrawPageTitle("采购进度", "背包增加后会自动计入当前采购站。 ");
         var session = purchaseSessionService.Session;
         if (session is null)
         {
@@ -985,14 +986,29 @@ public sealed class MainWindow : Window
         }
 
         ImGui.TextUnformatted($"{session.ShoppingListName}  {session.DataCenterName}  {GetSessionStateLabel(session.State)}");
-        var progress = session.TotalListings == 0 ? 0f : (float)session.PurchasedListings / session.TotalListings;
-        ImGui.ProgressBar(progress, new Vector2(-1, 0), $"{session.PurchasedListings}/{session.TotalListings}  {progress:P0}");
+        var progress = session.PlannedQuantity == 0
+            ? 0f
+            : (float)session.AcquiredQuantity / session.PlannedQuantity;
+        ImGui.ProgressBar(
+            progress,
+            new Vector2(-1, 0),
+            $"{session.AcquiredQuantity}/{session.PlannedQuantity}  {progress:P0}");
 
-        ImGui.TextDisabled(configuration.AutoMarkMarketPurchases
-            ? "自动记录已开启  仅匹配当前服务器、物品和整组数量"
+        ImGui.TextDisabled(configuration.AutoRecordInventoryChanges
+            ? $"自动记录已开启  每 {configuration.InventoryScanIntervalMilliseconds} 毫秒检测背包"
             : "自动记录已关闭  可使用下方复选框手动完成");
         if (!string.IsNullOrWhiteSpace(purchaseSessionService.LastAutomaticMessage))
-            ImGui.TextColored(new Vector4(0.35f, 0.85f, 0.45f, 1f), purchaseSessionService.LastAutomaticMessage);
+        {
+            ImGui.TextColored(
+                new Vector4(0.35f, 0.85f, 0.45f, 1f),
+                purchaseSessionService.LastAutomaticMessage);
+            if (purchaseSessionService.CanUndoLastAutomaticRecord)
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton("撤销最近记录"))
+                    purchaseSessionService.UndoLastAutomaticRecord();
+            }
+        }
 
         var currentStop = purchaseSessionService.CurrentStop;
         if (currentStop is not null)
@@ -1005,7 +1021,8 @@ public sealed class MainWindow : Window
             var actualWorld = purchaseSessionService.ActualWorldName;
             if (!string.IsNullOrWhiteSpace(actualWorld))
                 ImGui.TextDisabled($"角色所在服务器  {actualWorld}");
-            ImGui.TextDisabled($"剩余 {currentListings.Count(static item => !item.IsPurchased)} 个挂单  本站 {FormatGil(currentListings.Sum(static item => item.TotalPrice))} Gil");
+            var remainingQuantity = currentListings.Sum(static item => item.RemainingQuantity);
+            ImGui.TextDisabled($"剩余 {remainingQuantity} 件  本站 {FormatGil(currentListings.Sum(static item => item.TotalPrice))} Gil");
             ImGui.EndChild();
         }
 
@@ -1061,7 +1078,9 @@ public sealed class MainWindow : Window
             var completed = listings.All(static listing => listing.IsPurchased);
             var current = index == session.CurrentServerIndex;
             var flags = current ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
-            var status = completed ? "完成" : $"{listings.Count(item => item.IsPurchased)}/{listings.Length}";
+            var stopAcquired = listings.Sum(static item => item.AcquiredQuantity);
+            var stopPlanned = listings.Sum(static item => item.Quantity);
+            var status = completed ? "完成" : $"{stopAcquired}/{stopPlanned}";
             if (!ImGui.CollapsingHeader($"{index + 1}  {stop.Label}  {status}{(current ? "  当前" : string.Empty)}##Session.{stop.DataCenterName}.{stop.WorldName}", flags))
                 continue;
 
@@ -1104,7 +1123,7 @@ public sealed class MainWindow : Window
             return;
         ImGui.TableSetupColumn("完成", ImGuiTableColumnFlags.WidthFixed, 58);
         ImGui.TableSetupColumn("物品", ImGuiTableColumnFlags.WidthStretch, 1.7f);
-        ImGui.TableSetupColumn("数量", ImGuiTableColumnFlags.WidthFixed, 65);
+        ImGui.TableSetupColumn("进度", ImGuiTableColumnFlags.WidthFixed, 82);
         ImGui.TableSetupColumn("单价", ImGuiTableColumnFlags.WidthFixed, 88);
         ImGui.TableSetupColumn("小计", ImGuiTableColumnFlags.WidthFixed, 95);
         if (!configuration.SimpleInterface)
@@ -1129,7 +1148,8 @@ public sealed class MainWindow : Window
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(listing.ItemName);
             ImGui.TableNextColumn();
-            ImGui.TextUnformatted(listing.Quantity.ToString(CultureInfo.InvariantCulture));
+            ImGui.TextUnformatted(
+                $"{listing.AcquiredQuantity}/{listing.Quantity}");
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(FormatGil(listing.PricePerUnit));
             ImGui.TableNextColumn();
@@ -1213,8 +1233,15 @@ public sealed class MainWindow : Window
             configuration.CompactMode = compact;
             configuration.Save();
         }
+        var autoRecordInventory = configuration.AutoRecordInventoryChanges;
+        if (ImGui.Checkbox("背包增加后自动计入当前采购站", ref autoRecordInventory))
+        {
+            configuration.AutoRecordInventoryChanges = autoRecordInventory;
+            configuration.Save();
+        }
+
         var autoMark = configuration.AutoMarkMarketPurchases;
-        if (ImGui.Checkbox("交易板购买后自动完成对应挂单", ref autoMark))
+        if (ImGui.Checkbox("结合交易板购买信号提高匹配可信度", ref autoMark))
         {
             configuration.AutoMarkMarketPurchases = autoMark;
             configuration.Save();
@@ -1349,6 +1376,26 @@ public sealed class MainWindow : Window
                 configuration.SnapshotHistoryLimit = Math.Clamp(historyLimit, 1, 50);
                 configuration.Save();
             }
+
+            ImGui.SetNextItemWidth(190);
+            if (ImGui.BeginCombo(
+                    "背包检测间隔",
+                    $"{configuration.InventoryScanIntervalMilliseconds} 毫秒"))
+            {
+                foreach (var interval in InventoryScanOptions)
+                {
+                    var selected = interval == configuration.InventoryScanIntervalMilliseconds;
+                    if (ImGui.Selectable($"{interval} 毫秒", selected))
+                    {
+                        configuration.InventoryScanIntervalMilliseconds = interval;
+                        configuration.Save();
+                    }
+                    if (selected)
+                        ImGui.SetItemDefaultFocus();
+                }
+                ImGui.EndCombo();
+            }
+            ImGui.TextDisabled("默认 500 毫秒。检测到增加后等待 1 秒稳定再记录。");
 
             var inventorySuggestions = configuration.EnableInventorySuggestions;
             if (ImGui.Checkbox("非交易板物品增加时给出计入建议", ref inventorySuggestions))

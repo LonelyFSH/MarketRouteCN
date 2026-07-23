@@ -79,10 +79,10 @@ public sealed class PriceRefreshService : IDisposable
         var remaining = session.Requirements
             .Select(requirement =>
             {
-                var purchasedQuantity = session.Listings
-                    .Where(listing => listing.IsPurchased && listing.EntryId == requirement.EntryId)
-                    .Sum(static listing => listing.Quantity);
-                var remainingQuantity = Math.Max(0, requirement.RequiredQuantity - purchasedQuantity);
+                var acquiredQuantity = session.Listings
+                    .Where(listing => listing.EntryId == requirement.EntryId)
+                    .Sum(static listing => listing.AcquiredQuantity);
+                var remainingQuantity = Math.Max(0, requirement.RequiredQuantity - acquiredQuantity);
                 return remainingQuantity == 0
                     ? null
                     : new ShoppingListEntry
