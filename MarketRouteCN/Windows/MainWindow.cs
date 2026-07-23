@@ -714,7 +714,7 @@ public sealed class MainWindow : Window
             ImGui.EndTable();
         }
 
-        ImGui.InputTextMultiline("##ImportText", ref importText, 30_000u, new Vector2(-1, 230));
+        ImGui.InputTextMultiline("##ImportText", ref importText, (nuint)30_000, new Vector2(-1, 230));
         if (ImGui.Button("从剪贴板读取"))
         {
             importText = ImGui.GetClipboardText() ?? string.Empty;
