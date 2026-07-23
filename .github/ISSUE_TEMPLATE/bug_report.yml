@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible MarketRoute CN problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: 0.8.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Purchase scope
+      options:
+        - Single data center
+        - Four-data-center comparison
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include the shopping-list items, selected quality, data center, and visible error text. Do not include account credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
