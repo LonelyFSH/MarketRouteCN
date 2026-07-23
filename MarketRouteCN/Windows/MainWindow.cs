@@ -32,6 +32,7 @@ public sealed class MainWindow : Window
     private string newListName = "新采购清单";
     private string renameListName = string.Empty;
     private string importText = string.Empty;
+    private string importLineText = string.Empty;
     private string importListName = "导入采购清单";
     private ImportTextFormat importFormat = ImportTextFormat.Auto;
     private ShoppingListImportMode importMode = ShoppingListImportMode.Append;
@@ -714,7 +715,7 @@ public sealed class MainWindow : Window
             ImGui.EndTable();
         }
 
-        ImGui.InputTextMultiline("##ImportText", ref importText, (nuint)30_000, new Vector2(-1, 230));
+        DrawImportTextEditor();
         if (ImGui.Button("从剪贴板读取"))
         {
             importText = ImGui.GetClipboardText() ?? string.Empty;
@@ -727,6 +728,7 @@ public sealed class MainWindow : Window
         if (ImGui.Button("清空输入"))
         {
             importText = string.Empty;
+            importLineText = string.Empty;
             importPreview = null;
         }
 
@@ -768,6 +770,41 @@ public sealed class MainWindow : Window
         ImGui.TextDisabled("东方隔扇 x12");
         ImGui.TextDisabled("黑麻 20 NQ");
         ImGui.TextDisabled("itemId,name,quantity,quality");
+    }
+
+    private void DrawImportTextEditor()
+    {
+        ImGui.SetNextItemWidth(-92);
+        if (ImGui.InputTextWithHint("##ImportLine", "输入一行内容，批量清单请使用剪贴板", ref importLineText, 512)
+            && ImGui.IsItemDeactivatedAfterEdit()
+            && !string.IsNullOrWhiteSpace(importLineText))
+        {
+            AppendImportLine();
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("添加一行") && !string.IsNullOrWhiteSpace(importLineText))
+            AppendImportLine();
+
+        ImGui.BeginChild("##ImportTextPreview", new Vector2(-1, 196), true);
+        if (string.IsNullOrWhiteSpace(importText))
+            ImGui.TextDisabled("尚未载入清单。可以逐行添加，也可以直接从剪贴板读取多行内容。");
+        else
+            ImGui.TextUnformatted(importText);
+        ImGui.EndChild();
+    }
+
+    private void AppendImportLine()
+    {
+        var line = importLineText.Trim();
+        if (line.Length == 0)
+            return;
+
+        importText = string.IsNullOrEmpty(importText)
+            ? line
+            : $"{importText}{Environment.NewLine}{line}";
+        importLineText = string.Empty;
+        importPreview = null;
     }
 
     private void DrawImportPreview(ShoppingListImportResult preview)
