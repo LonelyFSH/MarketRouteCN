@@ -2,8 +2,8 @@
   {
     "Author": "LonelyFSH",
     "Name": "MarketRoute CN",
-    "Punchline": "国服批量比价、跨区路线分析与自动采购记录。",
-    "Description": "面向 FF14 国服交易板的批量采购规划插件。V0.9 提供简洁工作区、多个采购清单、任意/HQ/NQ 条件、四大区完整报价、跨大区混合分析、完整挂单组合、路线优化、采购会话恢复，以及交易板购买后的自动完成记录。挂单来自 Universalis 众包接口，不是游戏运营方提供的实时市场数据。",
+    "Punchline": "国服批量采购推荐",
+    "Description": "面向 FF14 国服交易板的批量采购规划插件",
     "Tags": [
       "market",
       "china",
