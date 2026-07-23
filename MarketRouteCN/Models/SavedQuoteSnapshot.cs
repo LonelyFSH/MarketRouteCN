@@ -23,11 +23,15 @@ public sealed class SavedDataCenterQuote
 
     public long TotalCost { get; set; }
 
+    public long RiskAdjustedCost { get; set; }
+
     public int ServerCount { get; set; }
 
     public int CompletedItems { get; set; }
 
     public int TotalItems { get; set; }
+
+    public int StaleItems { get; set; }
 
     public DateTimeOffset? OldestMarketDataTime { get; set; }
 

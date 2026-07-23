@@ -27,7 +27,7 @@ public sealed class UniversalisClient : IDisposable
         };
 
         httpClient.DefaultRequestHeaders.UserAgent.Clear();
-        httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MarketRouteCN", "0.5.0"));
+        httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MarketRouteCN", "0.8.0"));
         httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(+https://github.com/LonelyFSH/MarketRouteCN)"));
     }
 

@@ -35,6 +35,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var itemCatalogService = new ItemCatalogService(dataManager, log);
         var shoppingListService = new ShoppingListService(Configuration);
+        var transferService = new ShoppingListTransferService(itemCatalogService);
         var quoteHistoryService = new QuoteHistoryService(Configuration);
         universalisClient = new UniversalisClient(log);
         var optimizer = new PurchaseOptimizer();
@@ -51,19 +52,26 @@ public sealed class Plugin : IDalamudPlugin
             Configuration,
             itemCatalogService,
             shoppingListService,
+            transferService,
             quoteHistoryService,
             priceRefreshService,
             purchaseSessionService);
 
         WindowSystem.AddWindow(mainWindow);
-        commandManager.AddHandler(PrimaryCommand, new CommandInfo(OnCommand) { HelpMessage = "打开 MarketRoute CN。" });
-        commandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand) { HelpMessage = "打开 MarketRoute CN。" });
+        commandManager.AddHandler(PrimaryCommand, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "打开 MarketRoute CN。可用参数 list import quote route session settings。",
+        });
+        commandManager.AddHandler(ShortCommand, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "打开 MarketRoute CN。可用参数 list import quote route session settings。",
+        });
 
         pluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         pluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
-        pluginInterface.UiBuilder.OpenConfigUi += ToggleMainUi;
+        pluginInterface.UiBuilder.OpenConfigUi += OpenSettings;
 
-        log.Information("MarketRoute CN V0.5 initialized.");
+        log.Information("MarketRoute CN V0.8 initialized.");
     }
 
     public Configuration Configuration { get; }
@@ -74,7 +82,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         pluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         pluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
-        pluginInterface.UiBuilder.OpenConfigUi -= ToggleMainUi;
+        pluginInterface.UiBuilder.OpenConfigUi -= OpenSettings;
 
         commandManager.RemoveHandler(PrimaryCommand);
         commandManager.RemoveHandler(ShortCommand);
@@ -90,8 +98,13 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.Toggle();
     }
 
-    private void OnCommand(string _, string __)
+    private void OpenSettings()
     {
-        mainWindow.Toggle();
+        mainWindow.HandleCommand("settings");
+    }
+
+    private void OnCommand(string _, string arguments)
+    {
+        mainWindow.HandleCommand(arguments);
     }
 }

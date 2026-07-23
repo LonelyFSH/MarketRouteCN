@@ -1,16 +1,16 @@
 # Changelog
 
+## 0.8.0.0
+
+- Rebuilt the main interface as a persistent workspace with overview, sidebar navigation and direct workflow links.
+- Added automatic navigation from refresh to quotes, from quote cards to routes, and from routes to purchase sessions.
+- Added one-click use of the cheapest complete plan and one-click completion of the current world with advance to the next world.
+- Added plain-text, MakePlace-style, CSV and JSON import plus CSV and JSON clipboard export.
+- Added recent item shortcuts, list sorting and direct add-and-quote actions.
+- Added quote trend comparison, fallback risk pricing, liquidity warnings, freshness confidence and total-price targets.
+- Added compact mode, onboarding controls and command shortcuts for list, import, quote, route, session and settings.
+- Migrated configuration schema to version 8 while preserving V0.5 lists, history and active sessions.
+
 ## 0.5.0.0
 
-- 新增多个持久化采购清单
-- 新增报价快照历史、缓存、重试和取消请求
-- 新增服务器子集精确路线优化
-- 新增极致低价、平衡和最少服务器三种策略
-- 新增采购会话、逐挂单确认和中断恢复
-- 新增背包变化建议
-- 新增剩余项目重新报价与路线替换
-- 完善四大区完整报价比较和数据时间显示
-
-## 0.1.0.0
-
-- 初始可用版本
+- Added persistent shopping lists, quote history, server-subset optimization and purchasing sessions.

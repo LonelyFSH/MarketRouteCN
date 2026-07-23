@@ -7,6 +7,8 @@ namespace MarketRouteCN.Services;
 public sealed class ItemCatalogService
 {
     private readonly ItemSearchResult[] allItems;
+    private readonly IReadOnlyDictionary<uint, ItemSearchResult> byId;
+    private readonly IReadOnlyDictionary<string, ItemSearchResult> byName;
 
     public ItemCatalogService(IDataManager dataManager, IPluginLog log)
     {
@@ -25,12 +27,19 @@ public sealed class ItemCatalogService
                 .OrderBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            byId = allItems.ToDictionary(static item => item.ItemId);
+            byName = allItems
+                .GroupBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
+
             log.Information("Loaded {ItemCount} marketable items.", allItems.Length);
         }
         catch (Exception exception)
         {
             log.Error(exception, "Failed to load the local item catalog.");
             allItems = [];
+            byId = new Dictionary<uint, ItemSearchResult>();
+            byName = new Dictionary<string, ItemSearchResult>(StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -47,6 +56,30 @@ public sealed class ItemCatalogService
             .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .Take(maximumResults)
             .ToArray();
+    }
+
+    public bool TryGetById(uint itemId, out ItemSearchResult result)
+    {
+        if (byId.TryGetValue(itemId, out var found))
+        {
+            result = found;
+            return true;
+        }
+
+        result = null!;
+        return false;
+    }
+
+    public bool TryGetExactName(string name, out ItemSearchResult result)
+    {
+        if (byName.TryGetValue(name.Trim(), out var found))
+        {
+            result = found;
+            return true;
+        }
+
+        result = null!;
+        return false;
     }
 
     private static int GetMatchRank(string value, string query)

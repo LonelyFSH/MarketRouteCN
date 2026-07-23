@@ -168,6 +168,30 @@ public sealed class PurchaseSessionService : IDisposable
         Touch();
     }
 
+    public string? CurrentWorld => Session is null || Session.Worlds.Count == 0
+        ? null
+        : Session.Worlds[Math.Clamp(Session.CurrentServerIndex, 0, Session.Worlds.Count - 1)];
+
+    public void AdvanceToNextWorld()
+    {
+        if (Session is null || Session.Worlds.Count == 0)
+            return;
+
+        Session.CurrentServerIndex = Math.Min(Session.CurrentServerIndex + 1, Session.Worlds.Count - 1);
+        Touch();
+    }
+
+    public void CompleteCurrentWorldAndAdvance()
+    {
+        var currentWorld = CurrentWorld;
+        if (currentWorld is null)
+            return;
+
+        SetWorldPurchased(currentWorld, true);
+        if (Session is not null && !Session.IsComplete)
+            AdvanceToNextWorld();
+    }
+
     public void ApplyInventorySuggestion(Guid suggestionId)
     {
         var suggestion = suggestions.FirstOrDefault(item => item.SuggestionId == suggestionId);

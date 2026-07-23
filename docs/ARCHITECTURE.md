@@ -1,13 +1,7 @@
 # Architecture
 
-MarketRoute CN V0.5 分为五层。
+MarketRoute CN separates local item lookup, shopping-list persistence, text transfer, market requests, route optimization, quote history and purchase-session tracking.
 
-ItemCatalogService 负责读取本地可交易物品。
+The V0.8 interface uses one persistent workspace page state. User actions can move directly from list creation to quote results, from a data-center quote to its route, and from a route to a purchase session.
 
-UniversalisClient 负责分批请求、缓存、重试和解析市场挂单。
-
-PurchaseOptimizer 负责完整挂单组合和服务器子集优化。
-
-PriceRefreshService 负责报价快照、自动刷新和历史保存。
-
-PurchaseSessionService 负责采购过程、恢复和背包变化建议。
+The optimizer enumerates server subsets inside each data center. Each item is solved against complete listings with exact dynamic programming for bounded cases and a greedy fallback for large cases. The quote layer also calculates a fallback cost after removing one selected listing to expose price fragility.

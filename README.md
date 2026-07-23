@@ -1,61 +1,65 @@
 # MarketRoute CN
 
-面向 FF14 国服交易板的全品类批量采购规划插件。
+MarketRoute CN is a Dalamud plugin for planning batch market-board purchases on the Chinese FFXIV service.
 
-## V0.5 功能
+## V0.8 workflow
 
-- 保存、重命名、复制和切换多个采购清单
-- 从国服客户端本地可交易物品中检索并添加物品
-- 支持数量以及任意、HQ、NQ 品质要求
-- 支持单大区完整采购和四大区完整报价比较
-- 分批查询最多 100 个物品 ID，并提供重试、缓存、取消和自动刷新
-- 区分无挂单、数据源无法识别和请求失败
-- 显示插件请求时间、完成时间和市场数据时间
-- 按完整挂单计算，避免把不可拆分的挂单错误按需求数量计价
-- 枚举大区内服务器组合，提供极致低价、平衡和最少服务器三种策略
-- 显示不同服务器数量下的最低完整价格
-- 保存最近报价快照
-- 将完整方案转为可恢复的采购会话
-- 按服务器和挂单逐项标记完成
-- 检测主背包物品增加并建议计入采购会话
-- 对剩余项目重新查询并替换未完成路线
+The main window is a continuous workspace rather than a set of isolated tabs.
 
-## 命令
+- Overview shows the current list, latest complete quote, data confidence and purchase progress.
+- The workflow strip jumps directly between list, quote, route and purchase stages.
+- A price refresh can automatically open the quote result.
+- Quote cards open a selected data-center route or start a purchase session immediately.
+- The purchase page can complete the current world and advance to the next world in one action.
+
+## Main features
+
+- Multiple persistent shopping lists
+- Local marketable-item search using game data
+- Quantity and Any, HQ or NQ requirements
+- Plain text and MakePlace-style import
+- CSV and JSON clipboard import and export
+- Single-data-center procurement or four-data-center complete-price comparison
+- Complete-listing bundle optimization
+- Exact server-subset route optimization
+- Lowest price, balanced and fewest servers strategies
+- Quote request time and market-data age
+- Quote trend comparison against previous snapshots
+- Fallback risk price and low-liquidity warnings
+- Optional total-price target
+- Persistent purchase sessions and inventory increase suggestions
+- Automatic refresh with local request caching
+
+## Commands
 
 ```text
 /marketroute
 /mrcn
+/mrcn list
+/mrcn import
+/mrcn quote
+/mrcn route
+/mrcn session
+/mrcn settings
 ```
 
-## 数据说明
+## Data notice
 
-市场挂单来自 Universalis 众包 API，不是盛趣或 Square Enix 的实时市场接口。插件查询完成不代表每个商品的挂单刚刚更新，请检查界面中的市场数据时间。
+Item metadata is read from the local game client. Market listings are requested from the Universalis community data service. The displayed listings may be stale or may no longer exist in the in-game market board.
 
-## 开发环境
+The plugin does not automate world travel, market-board interaction or purchasing.
 
-- Dalamud API 15
-- .NET 10
-- x64
-- Dalamud.NET.Sdk 15.0.0
+## Build
 
-## 升级发布
-
-项目版本为 0.5.0.0。发布标签应使用：
+The project targets Dalamud API 15 through `Dalamud.NET.Sdk/15.0.0`, .NET 10 and x64.
 
 ```text
-v0.5.0.0
+dotnet restore MarketRouteCN.sln
+dotnet build MarketRouteCN.sln -c Release
 ```
 
-自定义仓库地址保持不变：
+## Custom repository
 
 ```text
 https://raw.githubusercontent.com/LonelyFSH/MarketRouteCN/main/repo.json
 ```
-
-## 隐私
-
-采购清单、报价摘要和采购会话保存在本地插件配置中。插件只向 Universalis 请求物品 ID 和大区公开市场数据，不上传角色名、账号标识或聊天内容。
-
-## License
-
-MIT

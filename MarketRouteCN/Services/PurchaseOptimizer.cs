@@ -173,10 +173,15 @@ public sealed class PurchaseOptimizer
                 IsComplete = false,
                 DataStatus = marketData?.Status ?? MarketDataStatus.RequestFailed,
                 MarketDataTime = marketData?.LastUploadTime,
+                EligibleListingCount = 0,
+                LowestUnitPrice = 0,
+                HasFallbackPlan = false,
+                FallbackCost = 0,
             };
         }
 
-        var selection = Solve(eligibleListings, checked((int)request.Quantity));
+        var requiredQuantity = checked((int)request.Quantity);
+        var selection = Solve(eligibleListings, requiredQuantity);
         var selected = selection.Listings
             .Select(listing => new SelectedListing(
                 Guid.NewGuid(),
@@ -187,15 +192,43 @@ public sealed class PurchaseOptimizer
                 listing))
             .ToArray();
 
+        var selectedMarketTime = selection.Listings
+            .Select(static listing => listing.LastReviewTime)
+            .Where(static time => time.HasValue)
+            .Min() ?? marketData?.LastUploadTime;
+
+        var fallbackCost = selection.TotalCost;
+        var hasFallbackPlan = false;
+        if (selection.TotalQuantity >= requiredQuantity && selection.Listings.Count > 0)
+        {
+            var firstSelected = selection.Listings[0];
+            var fallbackListings = eligibleListings
+                .Where(listing => !ReferenceEquals(listing, firstSelected))
+                .ToArray();
+            if (fallbackListings.Length > 0)
+            {
+                var fallback = Solve(fallbackListings, requiredQuantity);
+                if (fallback.TotalQuantity >= requiredQuantity)
+                {
+                    hasFallbackPlan = true;
+                    fallbackCost = fallback.TotalCost;
+                }
+            }
+        }
+
         return new ItemPurchasePlan
         {
             Request = request,
             SelectedListings = selected,
             TotalCost = selection.TotalCost,
             PurchasedQuantity = selection.TotalQuantity,
-            IsComplete = selection.TotalQuantity >= request.Quantity,
+            IsComplete = selection.TotalQuantity >= requiredQuantity,
             DataStatus = marketData?.Status ?? MarketDataStatus.RequestFailed,
-            MarketDataTime = marketData?.LastUploadTime,
+            MarketDataTime = selectedMarketTime,
+            EligibleListingCount = eligibleListings.Length,
+            LowestUnitPrice = eligibleListings[0].PricePerUnit,
+            HasFallbackPlan = hasFallbackPlan,
+            FallbackCost = fallbackCost,
         };
     }
 

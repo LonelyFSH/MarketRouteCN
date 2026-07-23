@@ -24,6 +24,10 @@ public sealed class DataCenterPurchasePlan
 
     public long TotalCost => ItemPlans.Sum(static item => item.TotalCost);
 
+    public long RiskCostIncrease => ItemPlans.Sum(static item => item.RiskCostIncrease);
+
+    public long RiskAdjustedCost => TotalCost + RiskCostIncrease;
+
     public int RequiredUnits => ItemPlans.Sum(static item => checked((int)item.Request.Quantity));
 
     public int PurchasedUnits => ItemPlans.Sum(static item => item.PurchasedQuantity);
@@ -31,6 +35,8 @@ public sealed class DataCenterPurchasePlan
     public int OverbuyUnits => ItemPlans.Sum(static item => item.OverbuyQuantity);
 
     public int ServerCount => ServerPlans.Count;
+
+    public int LowLiquidityItems => ItemPlans.Count(static item => item.IsComplete && item.EligibleListingCount <= 1);
 
     public DateTimeOffset? NewestMarketDataTime => ItemPlans
         .Select(static item => item.MarketDataTime)

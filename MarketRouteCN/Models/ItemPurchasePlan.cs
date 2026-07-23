@@ -16,5 +16,19 @@ public sealed class ItemPurchasePlan
 
     public DateTimeOffset? MarketDataTime { get; init; }
 
+    public int EligibleListingCount { get; init; }
+
+    public int LowestUnitPrice { get; init; }
+
+    public bool HasFallbackPlan { get; init; }
+
+    public long FallbackCost { get; init; }
+
     public int OverbuyQuantity => Math.Max(0, PurchasedQuantity - checked((int)Request.Quantity));
+
+    public long RiskCostIncrease => !IsComplete || TotalCost <= 0
+        ? 0
+        : HasFallbackPlan
+            ? Math.Max(0, FallbackCost - TotalCost)
+            : TotalCost;
 }
