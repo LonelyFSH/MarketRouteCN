@@ -38,4 +38,4 @@ https://raw.githubusercontent.com/LonelyFSH/MarketRouteCN/main/repo.json
 
 ## 声明
 
-MarketRoute CN 是第三方插件，与《最终幻想 XIV》运营方及 Universalis 没有隶属或官方合作关系。
+MarketRoute CN 是第三方插件，仅供个人采购使用
